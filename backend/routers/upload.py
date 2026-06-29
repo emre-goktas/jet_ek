@@ -1,5 +1,8 @@
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, File, UploadFile, HTTPException, Request, Form, BackgroundTasks
+# pyrefly: ignore [missing-import]
 from fastapi.templating import Jinja2Templates
+# pyrefly: ignore [missing-import]
 from fastapi.responses import HTMLResponse
 from pathlib import Path
 import json
@@ -25,15 +28,12 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
     fd, temp_path = tempfile.mkstemp()
     temp_pdf_path = None
     try:
-        file_size = 0
         with os.fdopen(fd, 'wb') as out_file:
             while chunk := await file.read(1024 * 1024):  # 1MB chunks
-                file_size += len(chunk)
-                if file_size > 100 * 1024 * 1024:
-                    raise HTTPException(status_code=413, detail="File size exceeds the 100MB limit.")
                 out_file.write(chunk)
 
-        if file_size < 4:
+        # Still verify if it's completely empty
+        if os.path.getsize(temp_path) < 4:
             raise HTTPException(status_code=400, detail="Empty file uploaded.")
 
         from backend.services.preprocessor import preprocess_to_pdf

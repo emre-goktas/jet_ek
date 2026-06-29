@@ -1,5 +1,5 @@
 """
-PDF processing service — using PyMuPDF (fitz):
+PDF processing service — using PyMuPDF (pymupdf):
 - PDF upload & save
 - Render page as PNG (memory cache)
 - Extract page range
@@ -11,7 +11,8 @@ import asyncio
 from pathlib import Path
 from typing import Literal
 
-import fitz  # PyMuPDF
+# pyrefly: ignore [missing-import]
+import pymupdf  # PyMuPDF
 from functools import lru_cache
 import contextlib
 import logging
@@ -53,14 +54,14 @@ def save_upload(file_path: Path, original_name: str) -> tuple[str, int]:
 
     # Get page count
     with lock_file(dest):
-        doc = fitz.open(str(dest))
+        doc = pymupdf.open(str(dest))
         page_count = len(doc)
         doc.close()
 
     return pdf_id, page_count
 
 # OCR Semaphore for controlling concurrency
-MAX_CONCURRENT_OCR = 2
+MAX_CONCURRENT_OCR = 4
 OCR_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_OCR)
 from backend import database
 
@@ -70,12 +71,12 @@ async def perform_ocr(task_id: str, input_path: Path, original_name: str, ocr_la
     dest_path = None
     try:
         pdf_id = uuid.uuid4().hex
-        dest_path = STORAGE_DIR / f"{pdf_id}_src.pdf"
+        dest_path = STORAGE_DIR / f"{pdf_id}_{original_name}"
 
         # Phase 1 Optimization: Fast text scanning with PyMuPDF to conserve system resources
         import shutil
         with lock_file(input_path):
-            doc = fitz.open(str(input_path))
+            doc = pymupdf.open(str(input_path))
             needs_ocr = False
             
             for page in doc:
@@ -109,11 +110,10 @@ async def perform_ocr(task_id: str, input_path: Path, original_name: str, ocr_la
                     "ocrmypdf",
                     "--skip-text",   # Run OCR only on image pages in mixed documents
                     "-l", ocr_lang,
-                    # Speed optimization: Removed --jobs 1, all CPU cores will be used
-                    # Commented out --deskew and --clean because they slow down process significantly
-                    # "--deskew",      # Fixes page orientation (deskew) -> VERY SLOW
-                    # "--clean",       # Cleans noise -> VERY SLOW
-                    "--optimize", "0", # Reduces file size. 0 for HF
+                    "--jobs", "3",   # Dedicated cores per OCR process (3 threads x 4 tasks = 12 cores)
+                    "--deskew",      # Fixes page orientation (deskew) -> Enhanced Quality
+                    "--clean",       # Cleans noise -> Enhanced Quality
+                    "--optimize", "1", # Reduces file size. 1 for balanced speed and size
                     "--fast-web-view", "0",
                     str(input_path),
                     str(dest_path),
@@ -130,7 +130,7 @@ async def perform_ocr(task_id: str, input_path: Path, original_name: str, ocr_la
             return
             
         with lock_file(dest_path):
-            doc = fitz.open(str(dest_path))
+            doc = pymupdf.open(str(dest_path))
             page_count = len(doc)
             doc.close()
         
@@ -158,10 +158,10 @@ def _src_path(pdf_id: str) -> Path:
     if not is_valid_uuid(pdf_id):
         raise ValueError(f"Invalid PDF ID: {pdf_id}")
         
-    path = STORAGE_DIR / f"{pdf_id}_src.pdf"
-    if not path.exists():
+    matches = list(STORAGE_DIR.glob(f"{pdf_id}_*.pdf"))
+    if not matches:
         raise FileNotFoundError(f"PDF not found: {pdf_id}")
-    return path
+    return matches[0]
 
 
 def render_page(pdf_id: str, page_num: int, dpi: int = 120) -> Path:
@@ -183,10 +183,10 @@ def render_page(pdf_id: str, page_num: int, dpi: int = 120) -> Path:
         return out_path
 
     with lock_file(path):
-        doc = fitz.open(str(path))
+        doc = pymupdf.open(str(path))
         try:
             page = doc[page_num]
-            mat = fitz.Matrix(dpi / 72, dpi / 72)
+            mat = pymupdf.Matrix(dpi / 72, dpi / 72)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             png_bytes = pix.tobytes("png")
             
@@ -198,74 +198,82 @@ def render_page(pdf_id: str, page_num: int, dpi: int = 120) -> Path:
     return out_path
 
 
-def extract_pages(pdf_id: str, page_indices: list[int], rotations: dict[int, int] = None) -> tuple[str, str]:
-    """Extracts the specified list of pages as a new PDF file
+def extract_pages(pages: list[dict], custom_name: str | None = None, file_counter: int | None = None) -> tuple[str, str]:
+    """Extracts the specified list of pages from potentially multiple PDFs
     and rotates them according to the specified angles.
 
     Args:
-        pdf_id: Source PDF ID
-        page_indices: List of page indices to extract (0-based)
-        rotations: {page_index: rotation_angle} e.g. {0: 90, 1: -90}
+        pages: List of dicts e.g. [{"pdf_id": "id", "page_idx": 0, "rotation": 90}]
+        custom_name: Optional custom filename prefix.
+        file_counter: Explicit counter sent from frontend session.
 
     Returns:
         (file_id, filename)
     """
-    if rotations is None:
-        rotations = {}
+    if not pages:
+        raise ValueError("No valid pages selected.")
 
-    src_path = _src_path(pdf_id)
-    with lock_file(src_path):
-        src_doc = fitz.open(str(src_path))
+    if len(pages) > 2000:
+        raise ValueError("To protect system performance, a maximum of 2000 pages can be extracted at once.")
+
+    new_doc = pymupdf.open()
+    has_rotation = False
     
-        # Validate page count and filter out invalid ones
-        total = len(src_doc)
-        valid_indices = [idx for idx in page_indices if 0 <= idx < total]
+    for p in pages:
+        pid = p.get("pdf_id")
+        idx = p.get("page_idx")
+        rot = p.get("rotation", 0)
         
-        if not valid_indices:
-             src_doc.close()
-             raise ValueError("No valid pages selected.")
+        src_path = _src_path(pid)
+        with lock_file(src_path):
+            src_doc = pymupdf.open(str(src_path))
+            try:
+                if 0 <= idx < len(src_doc):
+                    new_doc.insert_pdf(src_doc, from_page=idx, to_page=idx)
+                    if rot != 0:
+                        page = new_doc[-1]
+                        page.set_rotation((page.rotation + rot) % 360)
+                        has_rotation = True
+            finally:
+                src_doc.close()
+
+    file_id = uuid.uuid4().hex
     
-        if len(valid_indices) > 500:
-             src_doc.close()
-             raise ValueError("To protect system performance, a maximum of 500 pages can be extracted at once.")
-    
-        new_doc = fitz.open()
-        
-        # Add each page one by one (to preserve order)
-        for idx in valid_indices:
-            new_doc.insert_pdf(src_doc, from_page=idx, to_page=idx)
-    
-        # Apply rotations
-        has_rotation = False
-        for i, _ in enumerate(new_doc):
-            # Page index in original PDF
-            orig_page_idx = valid_indices[i]
-            if orig_page_idx in rotations:
-                angle = rotations[orig_page_idx]
-                if angle != 0:
-                    page = new_doc[i]
-                    page.set_rotation((page.rotation + angle) % 360)
-                    has_rotation = True
-    
-        file_id = uuid.uuid4().hex
-        
+    if custom_name:
+        if file_counter is not None:
+            next_num = file_counter
+        else:
+            max_num = 0
+            # Iterate over all PDF files to find the maximum global prefix number (fallback)
+            for f in STORAGE_DIR.glob("*.pdf"):
+                parts = f.name.split('_')
+                # Expected format: UUID_01_customname.pdf
+                if len(parts) >= 3:
+                    try:
+                        num = int(parts[1])
+                        if num > max_num:
+                            max_num = num
+                    except ValueError:
+                        pass
+            next_num = max_num + 1
+            
+        filename = f"{next_num:02d}_{custom_name}.pdf"
+    else:
         # Append selected page count to filename
-        count = len(valid_indices)
+        count = len(pages)
         if count == 1:
-            label = f"page_{valid_indices[0] + 1}"
+            label = f"page_{pages[0]['page_idx'] + 1}"
         else:
             label = f"{count}_pages"
-    
+
         if has_rotation:
             filename = f"rotated_{label}.pdf"
         else:
-            filename = f"{label}.pdf"
-            
-        out_path = STORAGE_DIR / f"{file_id}_{filename}"
-        new_doc.save(str(out_path))
-    
-        new_doc.close()
-        src_doc.close()
+            filename = f"extracted_{label}.pdf"
+        
+    out_path = STORAGE_DIR / f"{file_id}_{filename}"
+    new_doc.save(str(out_path))
+    new_doc.close()
 
     return file_id, filename
 

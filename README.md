@@ -91,7 +91,7 @@ If you prefer to run it without Docker, ensure you have the system dependencies 
  
 ### 2. Set Up Python Environment
 
-`pyython -m venv .venv`
+`python -m venv .venv`
 
 `source .venv/bin/activate  # On Windows: .venv\Scripts\activate`
 

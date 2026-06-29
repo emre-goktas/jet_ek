@@ -49,6 +49,25 @@
           No PDFs generated yet.
         </li>
       </ul>
+      <!-- Bulk Download Container -->
+      <div id="bulk-download-container" class="hidden p-3 border-t border-gray-800 bg-gray-900 space-y-2">
+        <button id="btn-download-all" 
+          class="w-full py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg border border-blue-500 transition-all duration-150 flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 cursor-pointer" 
+          onclick="downloadAllAsZip()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Download Only
+        </button>
+        <button id="btn-download-numbered" 
+          class="w-full py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg border border-blue-500 transition-all duration-150 flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 cursor-pointer" 
+          onclick="downloadAllNumberedAsZip()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Download & Add Annex Numbers
+        </button>
+      </div>
     </aside>
 
     <!-- PDF VIEWER -->
@@ -106,19 +125,19 @@
 
   <!-- UPLOAD AREA -->
   <footer class="bg-gray-900 border-t border-gray-800 px-6 py-4 shrink-0">
-    <div id="drop-zone" class="border-2 border-dashed border-gray-700 rounded-xl p-5 text-center cursor-pointer
-             hover:border-blue-500 transition-colors duration-200"
-      onclick="document.getElementById('file-input').click()"
+    <div id="drop-zone" class="relative border-2 border-dashed border-gray-700 rounded-xl p-5 text-center
+             hover:border-blue-500 transition-colors duration-200 overflow-hidden"
       ondragover="event.preventDefault(); this.classList.add('border-blue-400','bg-blue-950')"
-      ondragleave="this.classList.remove('border-blue-400','bg-blue-950')" ondrop="handleDrop(event)">
-      <p class="text-sm text-gray-400">
+      ondragleave="this.classList.remove('border-blue-400','bg-blue-950')">
+      
+      <input id="file-input" type="file" accept=".pdf,.tiff,.tif,.jpeg,.jpg,.png" multiple
+        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+        onchange="uploadFile(this)" title="Choose files or drag them here" />
+
+      <p class="text-sm text-gray-400 pointer-events-none relative z-0">
         <span class="text-blue-400 font-semibold">Choose file (PDF, Tiff, Jpeg, Png)</span> or drag it here
       </p>
     </div>
-    <form id="upload-form" class="hidden">
-      <input id="file-input" type="file" accept=".pdf,.tiff,.tif,.jpeg,.jpg,.png" class="hidden"
-        onchange="uploadFile(this)" />
-    </form>
     <div id="upload-status" class="text-xs text-center mt-2 text-gray-500 hidden"></div>
   </footer>
 
@@ -134,102 +153,211 @@
     </div>
   </div>
 
-  <!-- EXTRACT MODAL -->
-  <div id="extract-modal" class="modal-overlay" onclick="closeExtractModal()">
+  <!-- NAMING MODAL -->
+  <div id="naming-modal" class="modal-overlay" onclick="closeNamingModal()">
+    <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-0 flex flex-col shadow-2xl overflow-hidden"
+      style="max-width: 40rem; width: 100%; height: 90vh;" onclick="event.stopPropagation()">
+      
+      <!-- Top: Preview (Large) -->
+      <div class="flex-1 bg-gray-950 p-4 flex flex-col border-b border-gray-800 overflow-hidden relative">
+          <div class="flex justify-between items-center mb-2 z-10">
+              <p class="text-xs text-gray-400 uppercase tracking-widest font-semibold">First Page Preview</p>
+              <div class="flex gap-2">
+                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onclick="zoomPreview(0.2)">+</button>
+                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onclick="zoomPreview(-0.2)">-</button>
+                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs" onclick="resetZoom()">Reset</button>
+              </div>
+          </div>
+          <div class="flex-1 overflow-auto bg-gray-900 rounded-lg border border-gray-800 relative flex items-center justify-center cursor-move" id="preview-scroll-container">
+              <img id="naming-preview-img" src="" draggable="false" class="max-w-full max-h-full object-contain drop-shadow-md transition-transform origin-center" style="transform: scale(1);">
+          </div>
+      </div>
+
+      <!-- Bottom: Form -->
+      <div class="p-6 flex flex-col justify-center shrink-0">
+          <p class="text-lg text-white font-medium text-center mb-4">
+            Name your extracted file
+          </p>
+          <div class="mb-4 w-full flex flex-col gap-3">
+            <div class="w-full">
+                <label for="report-type" class="block text-xs text-gray-400 mb-2 uppercase tracking-widest text-center">Rapor Türü</label>
+                <select id="report-type" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" onchange="updateAutocompleteOptions()">
+                    <!-- Options populated via JS -->
+                </select>
+            </div>
+            <div class="w-full">
+                <label for="custom-filename" class="block text-xs text-gray-400 mb-2 uppercase tracking-widest text-center">Belge İsmi</label>
+                <input type="text" id="custom-filename" list="autocomplete-options" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" placeholder="Örn. ifade tutanağı" autocomplete="off" />
+                <datalist id="autocomplete-options"></datalist>
+            </div>
+          </div>
+          <div class="flex justify-center gap-4 w-full mt-2">
+            <button
+              class="flex-1 px-5 py-2.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors"
+              onclick="closeNamingModal()">
+              Cancel
+            </button>
+            <button
+              class="flex-1 px-5 py-2.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-lg shadow-blue-500/30 transition-colors"
+              onclick="proceedToExtract()">
+              Next
+            </button>
+          </div>
+      </div>
+
+    </div>
+  </div>
+  <!-- UPLOAD LANGUAGE SELECTOR MODAL -->
+  <div id="upload-lang-modal" class="modal-overlay" onclick="closeUploadLangModal()">
     <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-8 flex flex-col shadow-2xl"
-      style="max-width: 32rem" onclick="event.stopPropagation()">
+      style="max-width: 28rem; width: 100%;" onclick="event.stopPropagation()">
       <p class="text-xl text-white font-medium text-center leading-relaxed mb-6">
-        Do you want to apply text recognition by repairing and cleaning the selected documents?
+        Select OCR language for the uploaded document
       </p>
-
-      <!-- Language Selector (only relevant when using OCR) -->
-      <div id="ocr-lang-selector" class="mb-6">
-        <p class="text-xs text-gray-400 text-center mb-1 uppercase tracking-widest">OCR Language</p>
-        <p class="text-xs text-gray-500 text-center mb-3">Single language is faster — choose <span class="text-blue-400">Both</span> only if your document is mixed.</p>
+      
+      <div class="mb-6">
+        <p class="text-xs text-gray-500 text-center mb-4">Single language is faster — choose <span class="text-blue-400">Both</span> only if your document is mixed.</p>
         <div class="flex justify-center gap-2">
-          <button id="lang-btn-tur"
+          <button id="upload-lang-btn-tur"
             class="lang-btn lang-btn-active px-4 py-1.5 text-xs rounded-full border transition-colors"
-            onclick="setOcrLang('tur', this)">🇹🇷 Turkish</button>
-          <button id="lang-btn-eng"
+            onclick="setUploadOcrLang('tur', this)">🇹🇷 Turkish</button>
+          <button id="upload-lang-btn-eng"
             class="lang-btn px-4 py-1.5 text-xs rounded-full border transition-colors"
-            onclick="setOcrLang('eng', this)">🇬🇧 English</button>
-          <button id="lang-btn-both"
+            onclick="setUploadOcrLang('eng', this)">🇬🇧 English</button>
+          <button id="upload-lang-btn-both"
             class="lang-btn px-4 py-1.5 text-xs rounded-full border transition-colors"
-            onclick="setOcrLang('tur+eng', this)">🌐 Both</button>
+            onclick="setUploadOcrLang('tur+eng', this)">🌐 Both</button>
         </div>
       </div>
-
-      <!-- Progress Bar (Hidden by default) -->
-      <div id="extract-progress" class="hidden w-full mb-6">
-        <div class="flex items-center justify-between text-xs text-gray-400 mb-2">
-          <span>Repairing document and converting to text...</span>
-          <span id="extract-spinner"
-            class="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></span>
-        </div>
-        <div class="w-full bg-gray-800 rounded-full h-1.5">
-          <div class="bg-blue-500 h-1.5 rounded-full w-full animate-pulse"></div>
-        </div>
-      </div>
-
-      <div id="extract-actions" class="flex justify-center gap-4 w-full">
+      
+      <div class="flex justify-center gap-4 w-full">
         <button
           class="px-5 py-2.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors"
-          onclick="closeExtractModal()">
+          onclick="closeUploadLangModal()">
           Cancel
         </button>
         <button
-          class="px-5 py-2.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors"
-          onclick="confirmExtract(false)">
-          Extract Only
-        </button>
-        <button
           class="px-5 py-2.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-lg shadow-blue-500/30 transition-colors"
-          onclick="confirmExtract(true)">
-          Yes, Convert to Text
+          onclick="confirmUploadWithLang()">
+          OK, Proceed
         </button>
       </div>
     </div>
   </div>
 
   <script>
-    let currentPdfId = null;
-    let totalPages = 0;
-    let selectedPages = [];
+    let selectedPages = new Set();
     let deletedPages = new Set();
-    let lastClickedPageIdx = null;
+    let lastClickedCardId = null;
     let pageRotations = {};
     let sortableInstance = null;
-    let selectedOcrLang = 'tur'; // default: fastest single-language
+    let selectedOcrLang = 'tur';
+    let currentCustomName = '';
+    let fileCounter = 1;
+    let pendingFiles = [];
 
     function setOcrLang(lang, btn) {
       selectedOcrLang = lang;
-      document.querySelectorAll('.lang-btn').forEach(b => {
-        b.classList.remove('lang-btn-active');
-      });
+      document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('lang-btn-active'));
       btn.classList.add('lang-btn-active');
+    }
+
+    function setUploadOcrLang(lang, btn) {
+      selectedOcrLang = lang;
+      document.querySelectorAll('#upload-lang-modal .lang-btn').forEach(b => b.classList.remove('lang-btn-active'));
+      btn.classList.add('lang-btn-active');
+    }
+
+    function showUploadLangModal() {
+      document.querySelectorAll('#upload-lang-modal .lang-btn').forEach(b => b.classList.remove('lang-btn-active'));
+      if (selectedOcrLang === 'tur') {
+        document.getElementById('upload-lang-btn-tur').classList.add('lang-btn-active');
+      } else if (selectedOcrLang === 'eng') {
+        document.getElementById('upload-lang-btn-eng').classList.add('lang-btn-active');
+      } else {
+        document.getElementById('upload-lang-btn-both').classList.add('lang-btn-active');
+      }
+      document.getElementById('upload-lang-modal').classList.add('active');
+      document.body.classList.add('modal-open');
+    }
+
+    function closeUploadLangModal() {
+      const m = document.getElementById('upload-lang-modal');
+      if (m) m.classList.remove('active');
+      document.body.classList.remove('modal-open');
+      pendingFiles = [];
+    }
+
+    function confirmUploadWithLang() {
+      const files = [...pendingFiles];
+      closeUploadLangModal();
+      if (files.length > 0) {
+        processFiles(files);
+      }
     }
 
     function handleDrop(e) {
       e.preventDefault();
       const zone = document.getElementById('drop-zone');
-      zone.classList.remove('border-blue-400', 'bg-blue-950');
-      const file = e.dataTransfer.files[0];
-      if (file) sendFile(file);
+      if (zone) zone.classList.remove('border-blue-400', 'bg-blue-950');
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) {
+        pendingFiles = files;
+        showUploadLangModal();
+      }
     }
 
     function uploadFile(input) {
-      const file = input.files[0];
-      if (file) sendFile(file);
+      const zone = document.getElementById('drop-zone');
+      if (zone) zone.classList.remove('border-blue-400', 'bg-blue-950');
+      const files = Array.from(input.files);
+      if (files.length > 0) {
+        pendingFiles = files;
+        showUploadLangModal();
+      }
+      input.value = ""; // reset
+    }
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      const viewer = document.getElementById('viewer');
+      viewer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        viewer.classList.add('bg-gray-800', 'bg-opacity-50');
+      });
+      viewer.addEventListener('dragleave', (e) => {
+        viewer.classList.remove('bg-gray-800', 'bg-opacity-50');
+      });
+      viewer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        viewer.classList.remove('bg-gray-800', 'bg-opacity-50');
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) {
+          pendingFiles = files;
+          showUploadLangModal();
+        }
+      });
+      updateBulkDownloadVisibility();
+    });
+
+    async function processFiles(files) {
+      const validExts = ['.pdf', '.tiff', '.tif', '.jpeg', '.jpg', '.png'];
+      let current = 0;
+      let total = files.length;
+      
+      for (let file of files) {
+        current++;
+        const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        if (!validExts.includes(ext)) {
+          showStatus(`⚠ Skipping ${file.name} (unsupported format).`, 'text-yellow-400');
+          continue;
+        }
+        showStatus(`⏳ Uploading ${file.name} (${current}/${total})...`, 'text-gray-400');
+        await sendFile(file);
+      }
+      showStatus(`✓ All ${total} uploads completed.`, 'text-green-400');
     }
 
     async function sendFile(file) {
-      const validExts = ['.pdf', '.tiff', '.tif', '.jpeg', '.jpg', '.png'];
-      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-      if (!validExts.includes(ext)) {
-        showStatus('⚠ Unsupported or corrupted file format. Please upload .pdf, .tiff, .jpeg, or .png.', 'text-yellow-400');
-        return;
-      }
-      showStatus('⏳ Uploading...', 'text-gray-400');
       const form = new FormData();
       form.append('file', file);
 
@@ -241,25 +369,48 @@
           return;
         }
 
-        document.getElementById('viewer').innerHTML = await res.text();
+        const html = await res.text();
+        const viewer = document.getElementById('viewer');
+        
+        let inner = document.getElementById('viewer-inner');
+        if (!inner) {
+          viewer.innerHTML = html;
+        } else {
+          // Robustly append elements
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = html.trim();
+          
+          // find the viewer-inner or assume tempDiv's first child
+          const newInner = tempDiv.querySelector('#viewer-inner') || tempDiv.firstElementChild;
+          if (newInner) {
+            // Append all children to existing grid
+            while (newInner.firstChild) {
+              inner.appendChild(newInner.firstChild);
+            }
+          }
+        }
 
-        // Trigger HTMX polling element
         if (typeof htmx !== 'undefined') {
           htmx.process(document.getElementById('viewer'));
         }
 
-        // Manually scan HX-Trigger header in Fetch call (To trigger viewerReady on original fast load)
-        const triggerHeader = res.headers.get("HX-Trigger");
-        if (triggerHeader) {
-          try {
-            const events = JSON.parse(triggerHeader);
-            if (events.viewerReady) {
-              document.dispatchEvent(new CustomEvent('viewerReady', { detail: events.viewerReady }));
-            }
-          } catch (e) { }
-        }
+        document.getElementById('toolbar').classList.remove('hidden');
+        document.getElementById('upload-hint')?.remove();
 
-        showStatus('✓ Request sent', 'text-green-400');
+        inner = document.getElementById('viewer-inner');
+
+        if (sortableInstance) sortableInstance.destroy();
+        sortableInstance = new Sortable(inner, {
+          multiDrag: true,
+          selectedClass: 'selected',
+          animation: 150,
+          handle: '.drag-handle',
+          ghostClass: 'sortable-ghost',
+          dragClass: 'sortable-drag',
+          scroll: viewer,
+          scrollSensitivity: 80,
+          scrollSpeed: 20
+        });
       } catch (err) {
         showStatus('✗ Connection error.', 'text-red-400');
       }
@@ -267,139 +418,115 @@
 
     function showStatus(msg, cls) {
       const el = document.getElementById('upload-status');
+      if (!el) return;
       el.textContent = msg;
       el.className = `text-xs text-center mt-2 ${cls}`;
       el.classList.remove('hidden');
     }
 
-    function selectPage(pageIndex, event) {
-      if (event.target.closest('.drag-handle')) return;
-      if (event.target.closest('.small-rotate-btn')) return;
-      if (event.target.closest('.delete-btn-inline')) return; // Ignore selection when deleting
-      if (deletedPages.has(parseInt(pageIndex))) return; // Ignore clicks if page is deleted
+    function selectPage(card, event) {
+      if (event.target.closest('.drag-handle') || event.target.closest('.small-rotate-btn') || event.target.closest('.delete-btn-inline')) return;
+      
+      const cid = card.id;
+      if (deletedPages.has(cid)) return;
 
-      pageIndex = parseInt(pageIndex);
       const isShift = event.shiftKey;
       const isMeta = event.ctrlKey || event.metaKey;
 
       if (!isShift && !isMeta) {
-        showPreview(pageIndex);
-        selectedPages = [pageIndex];
-      } else if (isShift && lastClickedPageIdx !== null) {
-        const start = Math.min(lastClickedPageIdx, pageIndex);
-        const end = Math.max(lastClickedPageIdx, pageIndex);
-        for (let i = start; i <= end; i++) {
-          if (!selectedPages.includes(i)) selectedPages.push(i);
+        showPreview(card);
+        selectedPages.clear();
+        selectedPages.add(cid);
+      } else if (isShift && lastClickedCardId) {
+        const cards = Array.from(document.querySelectorAll('.page-card'));
+        const idx1 = cards.findIndex(c => c.id === lastClickedCardId);
+        const idx2 = cards.findIndex(c => c === card);
+        if (idx1 !== -1 && idx2 !== -1) {
+          const start = Math.min(idx1, idx2);
+          const end = Math.max(idx1, idx2);
+          for (let i = start; i <= end; i++) {
+            selectedPages.add(cards[i].id);
+          }
         }
       } else if (isMeta) {
-        const pos = selectedPages.indexOf(pageIndex);
-        if (pos > -1) selectedPages.splice(pos, 1);
-        else selectedPages.push(pageIndex);
+        if (selectedPages.has(cid)) selectedPages.delete(cid);
+        else selectedPages.add(cid);
       }
-      lastClickedPageIdx = pageIndex;
+      lastClickedCardId = cid;
       updateHighlight();
       updateSelectionInfo();
-
-      if (event.stopPropagation) event.stopPropagation();
     }
 
     function selectAllPages() {
-      selectedPages = Array.from({ length: totalPages }, (_, i) => i).filter(i => !deletedPages.has(i));
+      document.querySelectorAll('.page-card').forEach(c => {
+        if (!deletedPages.has(c.id)) selectedPages.add(c.id);
+      });
       updateHighlight();
       updateSelectionInfo();
     }
 
     function clearSelection() {
-      selectedPages = [];
-      lastClickedPageIdx = null;
+      selectedPages.clear();
+      lastClickedCardId = null;
       updateHighlight();
       updateSelectionInfo();
     }
 
     function updateHighlight() {
       document.querySelectorAll('.page-card').forEach(card => {
-        const idx = parseInt(card.dataset.pageIndex);
-        const shouldBeSelected = selectedPages.includes(idx);
+        const shouldBeSelected = selectedPages.has(card.id);
         card.classList.toggle('selected', shouldBeSelected);
 
         try {
           if (typeof Sortable !== 'undefined' && Sortable.utils && Sortable.utils.select) {
-            if (shouldBeSelected) {
-              Sortable.utils.select(card);
-            } else {
-              Sortable.utils.deselect(card);
-            }
+            if (shouldBeSelected) Sortable.utils.select(card);
+            else Sortable.utils.deselect(card);
           }
-        } catch (e) {
-          console.error("MultiDrag error", e);
-        }
+        } catch (e) { }
       });
     }
 
     function updateSelectionInfo() {
       const info = document.getElementById('selection-info');
-      info.textContent = selectedPages.length === 0 ? 'Select pages' : `${selectedPages.length} pages selected.`;
+      if(info) info.textContent = selectedPages.size === 0 ? 'Select pages' : `${selectedPages.size} pages selected.`;
 
       const btnDeleteSelected = document.getElementById('btn-delete-selected');
       if (btnDeleteSelected) {
-        if (selectedPages.length > 0) {
-          btnDeleteSelected.classList.remove('hidden');
-        } else {
-          btnDeleteSelected.classList.add('hidden');
-        }
+        btnDeleteSelected.classList.toggle('hidden', selectedPages.size === 0);
       }
 
       const btnRestoreAll = document.getElementById('btn-restore-all');
       if (btnRestoreAll) {
-        if (deletedPages.size > 0) {
-          btnRestoreAll.classList.remove('hidden');
-        } else {
-          btnRestoreAll.classList.add('hidden');
-        }
+        btnRestoreAll.classList.toggle('hidden', deletedPages.size === 0);
       }
     }
 
     function deleteSelectedPages() {
-      const pagesToDelete = [...selectedPages];
-      pagesToDelete.forEach(idx => {
-        deletedPages.add(idx);
-        const card = document.getElementById(`page-card-${idx}`);
+      selectedPages.forEach(cid => {
+        deletedPages.add(cid);
+        const card = document.getElementById(cid);
         if (card) {
           card.classList.add('deleted-page');
           card.classList.remove('selected');
         }
       });
-      selectedPages = [];
+      selectedPages.clear();
       updateSelectionInfo();
     }
 
-    function deletePage(event, pageIndex) {
-      event.stopPropagation(); // Prevent card from being selected
-      pageIndex = parseInt(pageIndex);
-      deletedPages.add(pageIndex);
-
-      const card = document.getElementById(`page-card-${pageIndex}`);
-      if (card) {
-        card.classList.add('deleted-page');
-        card.classList.remove('selected');
-      }
-
-      const pos = selectedPages.indexOf(pageIndex);
-      if (pos > -1) selectedPages.splice(pos, 1);
-
-      updateSelectionInfo();
-    }
-
-    function restorePage(event, pageIndex) {
+    function deletePage(event, card) {
       event.stopPropagation();
-      pageIndex = parseInt(pageIndex);
-      deletedPages.delete(pageIndex);
+      deletedPages.add(card.id);
+      card.classList.add('deleted-page');
+      card.classList.remove('selected');
+      selectedPages.delete(card.id);
+      updateSelectionInfo();
+    }
 
-      const card = document.getElementById(`page-card-${pageIndex}`);
-      if (card) {
-        card.classList.remove('deleted-page');
-      }
-
+    function restorePage(event, card) {
+      event.stopPropagation();
+      deletedPages.delete(card.id);
+      card.classList.remove('deleted-page');
       updateSelectionInfo();
     }
 
@@ -409,67 +536,183 @@
       updateSelectionInfo();
     }
 
-    function rotateSinglePage(event, pageIndex, direction) {
+    function rotateSinglePage(event, card, direction) {
       event.stopPropagation();
       const angle = direction === 'left' ? -90 : 90;
-      let currentRotation = pageRotations[pageIndex] || 0;
+      let currentRotation = pageRotations[card.id] || 0;
       currentRotation = (currentRotation + angle) % 360;
       if (currentRotation < 0) currentRotation += 360;
-      pageRotations[pageIndex] = currentRotation;
-      const card = document.getElementById(`page-card-${pageIndex}`);
-      if (card) {
-        const img = card.querySelector('.page-img');
-        if (img) img.style.transform = `rotate(${currentRotation}deg)`;
-      }
+      pageRotations[card.id] = currentRotation;
+      const img = card.querySelector('.page-img');
+      if (img) img.style.transform = `rotate(${currentRotation}deg)`;
     }
 
-    function closeExtractModal() {
-      document.getElementById('extract-modal').classList.remove('active');
+    function closeNamingModal() {
+      const m = document.getElementById('naming-modal');
+      if(m) m.classList.remove('active');
       document.body.classList.remove('modal-open');
     }
 
     function doExtract() {
-      if (!currentPdfId || selectedPages.length === 0) return;
-      // Reset language selector to default (Turkish) each time modal opens
-      setOcrLang('tur', document.getElementById('lang-btn-tur'));
-      document.getElementById('extract-modal').classList.add('active');
+      if (selectedPages.size === 0) return;
+      document.getElementById('custom-filename').value = '';
+      
+      // Find the first selected page image
+      const cardsInOrder = Array.from(document.querySelectorAll('.page-card'));
+      let firstSelectedImgSrc = '';
+      let firstRotation = 0;
+      for (let card of cardsInOrder) {
+        if (selectedPages.has(card.id) && !deletedPages.has(card.id)) {
+           const img = card.querySelector('.page-img');
+           if (img) {
+               firstSelectedImgSrc = img.src;
+               firstRotation = pageRotations[card.id] || 0;
+           }
+           break;
+        }
+      }
+      
+      const previewImg = document.getElementById('naming-preview-img');
+      if (previewImg) {
+          previewImg.src = firstSelectedImgSrc;
+          previewImg.dataset.rotation = firstRotation;
+          if (typeof resetZoom === 'function') resetZoom();
+      }
+
+      document.getElementById('naming-modal').classList.add('active');
       document.body.classList.add('modal-open');
-      document.getElementById('extract-progress').classList.add('hidden');
-      document.getElementById('extract-actions').classList.remove('hidden');
-      document.getElementById('ocr-lang-selector').classList.remove('hidden');
+    }
+
+    function proceedToExtract() {
+      const input = document.getElementById('custom-filename').value.trim();
+      currentCustomName = input || 'extracted'; // default fallback if empty
+      
+      closeNamingModal();
+      confirmExtract(true);
+    }
+
+    function appendLoadingToOutputList(taskId, filename) {
+      const list = document.getElementById('output-list');
+      const empty = document.getElementById('output-empty');
+      if (empty) empty.remove();
+      
+      const wrapper = document.createElement('li');
+      wrapper.id = `loading-task-${taskId}`;
+      wrapper.innerHTML = `
+        <div class="pdf-item opacity-75 border border-dashed border-gray-800 p-2.5 rounded-lg bg-gray-900/50 flex flex-col gap-2">
+          <div class="flex items-start gap-2">
+            <svg class="animate-spin w-4 h-4 text-blue-500 shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+              <p class="text-xs font-medium text-gray-400 truncate" title="${filename}">${filename}</p>
+              <p class="text-[10px] text-blue-400 font-semibold animate-pulse mt-0.5">Processing OCR...</p>
+            </div>
+          </div>
+          <div class="w-full bg-gray-850 rounded-full h-1 overflow-hidden">
+            <div class="bg-blue-500 h-1 rounded-full w-2/3 animate-pulse"></div>
+          </div>
+        </div>
+      `;
+      list.appendChild(wrapper);
+      updateBulkDownloadVisibility();
+    }
+
+    function replaceLoadingWithOutput(taskId, html) {
+      const loader = document.getElementById(`loading-task-${taskId}`);
+      if (loader) {
+        loader.removeAttribute('id');
+        loader.innerHTML = html;
+        updateBulkDownloadVisibility();
+      }
+    }
+
+    function handleLoadingFailure(taskId, errorMsg) {
+      const loader = document.getElementById(`loading-task-${taskId}`);
+      if (loader) {
+        loader.innerHTML = `
+          <div class="pdf-item border border-red-950/50 p-2.5 rounded-lg bg-red-950/20 flex flex-col gap-1.5">
+            <div class="flex items-start gap-2">
+              <svg class="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-medium text-red-400 truncate">Extraction Failed</p>
+                <p class="text-[10px] text-red-500 mt-0.5 line-clamp-2" title="${errorMsg}">${errorMsg}</p>
+              </div>
+            </div>
+            <button class="text-[10px] text-gray-500 hover:text-gray-400 self-end uppercase font-semibold" onclick="this.closest('li').remove(); updateBulkDownloadVisibility();">Dismiss</button>
+          </div>
+        `;
+        updateBulkDownloadVisibility();
+      }
     }
 
     async function confirmExtract(useOCR) {
-      if (!currentPdfId || selectedPages.length === 0) return;
+      if (selectedPages.size === 0) return;
 
-      document.getElementById('extract-actions').classList.add('hidden');
-      document.getElementById('extract-progress').classList.remove('hidden');
+      const cardsInOrder = Array.from(document.querySelectorAll('.page-card'));
+      const extractionList = [];
+      
+      cardsInOrder.forEach(card => {
+        if (selectedPages.has(card.id) && !deletedPages.has(card.id)) {
+          extractionList.push({
+             pdf_id: card.dataset.pdfId,
+             page_idx: parseInt(card.dataset.pageIndex),
+             rotation: pageRotations[card.id] || 0
+          });
+        }
+      });
+      
+      if(extractionList.length === 0) {
+          return;
+      }
 
-      const actRotations = {};
-      selectedPages.forEach(idx => { if (pageRotations[idx]) actRotations[idx] = pageRotations[idx]; });
+      // Generate temporary display filename
+      let displayFilename = '';
+      if (currentCustomName) {
+        displayFilename = `${String(fileCounter).padStart(2, '0')}_${currentCustomName}.pdf`;
+      } else {
+        const count = extractionList.length;
+        const label = count === 1 ? `page_${extractionList[0].page_idx + 1}` : `${count}_pages`;
+        displayFilename = `extracted_${label}.pdf`;
+      }
 
-      const currentOrder = Array.from(document.querySelectorAll('.page-card'))
-        .map(card => parseInt(card.dataset.pageIndex));
-      const reorderedSelection = currentOrder.filter(idx => selectedPages.includes(idx) && !deletedPages.has(idx));
+      // Generate a temp UI ID for tracking until response
+      const tempUiId = 'temp-' + Math.random().toString(36).substring(2, 9);
+      appendLoadingToOutputList(tempUiId, displayFilename);
+      clearSelection();
 
       const res = await postAction('/extract', {
-        pdf_id: currentPdfId,
-        page_indices: reorderedSelection,
-        rotations: actRotations,
+        pages: extractionList,
         ocr: useOCR,
-        ocr_lang: selectedOcrLang
+        ocr_lang: selectedOcrLang,
+        custom_name: currentCustomName,
+        file_counter: fileCounter
       });
 
       if (res) {
         if (res.startsWith('TASK_')) {
+          const loader = document.getElementById(`loading-task-${tempUiId}`);
+          if (loader) {
+            loader.id = `loading-task-${res}`;
+          }
+          if (currentCustomName !== '') {
+            fileCounter++;
+          }
           pollExtractTask(res);
         } else {
-          appendToOutputList(res);
-          closeExtractModal();
-          clearSelection();
+          replaceLoadingWithOutput(tempUiId, res);
+          if (currentCustomName !== '') {
+            fileCounter++;
+          }
         }
       } else {
-        closeExtractModal();
+        const loader = document.getElementById(`loading-task-${tempUiId}`);
+        if (loader) loader.remove();
+        updateBulkDownloadVisibility();
+        showStatus('✗ Extraction request failed.', 'text-red-400');
       }
     }
 
@@ -477,24 +720,20 @@
       try {
         const res = await fetch(`/extract-status/${taskId}`);
         if (!res.ok) {
-          showStatus('✗ Server error occurred', 'text-red-400');
-          closeExtractModal();
+          handleLoadingFailure(taskId, 'Server error occurred');
           return;
         }
         const data = await res.json();
         if (data.status === "pending" || data.status === "processing") {
           setTimeout(() => pollExtractTask(taskId), 1500);
         } else if (data.status === "done") {
-          appendToOutputList(data.html);
-          closeExtractModal();
-          clearSelection();
+          replaceLoadingWithOutput(taskId, data.html);
           showStatus('✓ Extraction completed.', 'text-green-400');
         } else {
-          showStatus('✗ OCR Error: ' + data.error, 'text-red-400');
-          closeExtractModal();
+          handleLoadingFailure(taskId, data.error || 'OCR Error');
         }
       } catch (e) {
-        closeExtractModal();
+        handleLoadingFailure(taskId, e.message || 'Connection error');
       }
     }
 
@@ -511,8 +750,8 @@
       } catch (e) { return null; }
     }
 
-    function showPreview(pageIndex) {
-      const img = document.getElementById(`page-card-${pageIndex}`).querySelector('.page-img');
+    function showPreview(card) {
+      const img = card.querySelector('.page-img');
       const modalImg = document.getElementById('preview-img');
       const modal = document.getElementById('preview-modal');
       modalImg.src = img.src;
@@ -522,7 +761,8 @@
     }
 
     function closePreview() {
-      document.getElementById('preview-modal').classList.remove('active');
+      const p = document.getElementById('preview-modal');
+      if(p) p.classList.remove('active');
       document.body.classList.remove('modal-open');
     }
 
@@ -533,34 +773,168 @@
       const wrapper = document.createElement('li');
       wrapper.innerHTML = html;
       list.appendChild(wrapper);
+      updateBulkDownloadVisibility();
     }
 
-    document.addEventListener('viewerReady', (e) => {
-      currentPdfId = e.detail.pdfId;
-      totalPages = e.detail.pageCount;
-      selectedPages = [];
-      deletedPages = new Set();
-      lastClickedPageIdx = null;
-      pageRotations = {};
-      document.getElementById('toolbar').classList.remove('hidden');
-      document.getElementById('upload-hint')?.remove();
-      updateSelectionInfo();
-      const el = document.getElementById('viewer-inner');
-      const scrollParent = document.getElementById('viewer');
+    function updateBulkDownloadVisibility() {
+      const container = document.getElementById('bulk-download-container');
+      const list = document.getElementById('output-list');
+      if (!list || !container) return;
+      const items = list.querySelectorAll('.pdf-item');
+      if (items.length > 0) {
+        container.classList.remove('hidden');
+      } else {
+        container.classList.add('hidden');
+      }
+    }
 
-      if (sortableInstance) sortableInstance.destroy();
-      sortableInstance = new Sortable(el, {
-        multiDrag: true,
-        selectedClass: 'selected',
-        animation: 150,
-        handle: '.drag-handle',
-        ghostClass: 'sortable-ghost',
-        dragClass: 'sortable-drag',
-        scroll: scrollParent,
-        scrollSensitivity: 80,
-        scrollSpeed: 20
+    function downloadAllAsZip() {
+      const links = document.querySelectorAll('#output-list a.download-btn');
+      if (links.length === 0) return;
+      const ids = Array.from(links).map(a => {
+        const href = a.getAttribute('href');
+        return href.substring(href.lastIndexOf('/') + 1);
       });
+      window.location.href = `/download-zip?file_ids=${ids.join(',')}`;
+    }
+
+    function downloadAllNumberedAsZip() {
+      const links = document.querySelectorAll('#output-list a.download-btn');
+      if (links.length === 0) return;
+      const ids = Array.from(links).map(a => {
+        const href = a.getAttribute('href');
+        return href.substring(href.lastIndexOf('/') + 1);
+      });
+      window.location.href = `/download-zip-numbered?file_ids=${ids.join(',')}`;
+    }
+
+    let currentPreviewZoom = 1;
+    let currentTranslateX = 0;
+    let currentTranslateY = 0;
+    let isDraggingPreview = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+
+    function zoomPreview(delta) {
+        currentPreviewZoom += delta;
+        if (currentPreviewZoom < 0.2) currentPreviewZoom = 0.2;
+        if (currentPreviewZoom > 5) currentPreviewZoom = 5;
+        applyPreviewZoom();
+    }
+    function resetZoom() {
+        currentPreviewZoom = 1;
+        currentTranslateX = 0;
+        currentTranslateY = 0;
+        applyPreviewZoom();
+    }
+    function applyPreviewZoom() {
+        const img = document.getElementById('naming-preview-img');
+        if (img) {
+            let rotationStr = "";
+            if (img.dataset.rotation) {
+                rotationStr = `rotate(${img.dataset.rotation}deg)`;
+            }
+            // Applying translate first (leftmost) means translation is in unscaled screen coordinates
+            img.style.transform = `translate(${currentTranslateX}px, ${currentTranslateY}px) scale(${currentPreviewZoom}) ${rotationStr}`;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const container = document.getElementById('preview-scroll-container');
+        if (container) {
+            container.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                if (e.deltaY < 0) {
+                    zoomPreview(0.1);
+                } else {
+                    zoomPreview(-0.1);
+                }
+            });
+
+            container.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return; // Only left click
+                isDraggingPreview = true;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                container.classList.add('cursor-grabbing');
+                container.classList.remove('cursor-move');
+            });
+            
+            window.addEventListener('mouseup', () => {
+                isDraggingPreview = false;
+                if (container) {
+                    container.classList.remove('cursor-grabbing');
+                    container.classList.add('cursor-move');
+                }
+            });
+            
+            window.addEventListener('mousemove', (e) => {
+                if (!isDraggingPreview) return;
+                e.preventDefault();
+                const dx = e.clientX - dragStartX;
+                const dy = e.clientY - dragStartY;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                
+                currentTranslateX += dx;
+                currentTranslateY += dy;
+                applyPreviewZoom();
+            });
+        }
     });
+    let autocompleteData = {};
+
+    async function loadAutocompleteData() {
+        try {
+            const res = await fetch('/static/belge_isimlendirme_autocomplete.json');
+            if (!res.ok) throw new Error('Failed to fetch autocomplete data');
+            autocompleteData = await res.json();
+            
+            const reportTypeSelect = document.getElementById('report-type');
+            if (!reportTypeSelect) return;
+            
+            reportTypeSelect.innerHTML = '';
+            
+            for (const key in autocompleteData) {
+                const option = document.createElement('option');
+                option.value = key;
+                // Prettify common keys
+                if (key === 'is_kazasi') option.textContent = 'İş Kazası';
+                else if (key === 'meslek_hastaligi') option.textContent = 'Meslek Hastalığı';
+                else option.textContent = key;
+                reportTypeSelect.appendChild(option);
+            }
+            
+            updateAutocompleteOptions();
+        } catch (err) {
+            console.error('Error loading autocomplete data:', err);
+        }
+    }
+
+    function updateAutocompleteOptions() {
+        const reportTypeSelect = document.getElementById('report-type');
+        const datalist = document.getElementById('autocomplete-options');
+        if (!reportTypeSelect || !datalist) return;
+        
+        const reportType = reportTypeSelect.value;
+        datalist.innerHTML = '';
+        
+        if (autocompleteData[reportType]) {
+            const data = autocompleteData[reportType];
+            const allItems = [...(data.document_types || []), ...(data.document_templates || [])];
+            // Remove duplicates
+            const uniqueItems = [...new Set(allItems)];
+            
+            // Limit to avoid massive datalist hanging the browser, but 400 is fine
+            uniqueItems.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item;
+                datalist.appendChild(option);
+            });
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadAutocompleteData);
   </script>
 </body>
 

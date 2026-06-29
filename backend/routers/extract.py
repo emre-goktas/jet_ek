@@ -3,8 +3,11 @@ Extract endpoint — POST /extract
 Extracts the selected page range as a new PDF.
 Response: HTML fragment added to the left panel via HTMX.
 """
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
+# pyrefly: ignore [missing-import]
 from fastapi.templating import Jinja2Templates
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel
 from pathlib import Path
 import uuid
@@ -20,31 +23,35 @@ templates = Jinja2Templates(
 
 ALLOWED_OCR_LANGS = {"tur", "eng", "tur+eng"}
 
-class ExtractRequest(BaseModel):
+class PageExtract(BaseModel):
     pdf_id: str
-    page_indices: list[int]  # 0-based list of selected pages
-    rotations: dict[int, int] = {} # page_index: angle
+    page_idx: int
+    rotation: int = 0
+
+class ExtractRequest(BaseModel):
+    pages: list[PageExtract]
     ocr: bool = False
     ocr_lang: str = "tur+eng"  # Tesseract language(s): "tur", "eng", or "tur+eng"
+    custom_name: str | None = None
+    file_counter: int | None = None
 
 
 @router.post("/extract")
-async def extract_pages(req: ExtractRequest, background_tasks: BackgroundTasks, request: Request):
+def extract_pages(req: ExtractRequest, background_tasks: BackgroundTasks, request: Request):
     """Extracts selected pages, returns the left panel HTML fragment."""
-    if not req.page_indices:
+    if not req.pages:
         raise HTTPException(status_code=400, detail="No pages selected.")
 
     try:
-        file_id, filename = pdf_service.extract_pages(
-            req.pdf_id, req.page_indices, req.rotations
-        )
+        pages_dicts = [p.model_dump() for p in req.pages]
+        file_id, filename = pdf_service.extract_pages(pages_dicts, custom_name=req.custom_name, file_counter=req.file_counter)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Source PDF not found.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF extraction error: {e}")
 
-    count = len(req.page_indices)
-    label = f"{count} Pages" if count > 1 else f"Page {req.page_indices[0] + 1}"
+    count = len(req.pages)
+    label = f"{count} Pages" if count > 1 else f"Page {req.pages[0].page_idx + 1}"
 
     if req.ocr:
         lang = req.ocr_lang if req.ocr_lang in ALLOWED_OCR_LANGS else "tur+eng"
