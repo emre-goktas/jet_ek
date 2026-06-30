@@ -213,8 +213,8 @@ def extract_pages(pages: list[dict], custom_name: str | None = None, file_counte
     if not pages:
         raise ValueError("No valid pages selected.")
 
-    if len(pages) > 2000:
-        raise ValueError("To protect system performance, a maximum of 2000 pages can be extracted at once.")
+    if len(pages) > 5000:
+        raise ValueError("To protect system performance, a maximum of 5000 pages can be extracted at once.")
 
     new_doc = pymupdf.open()
     has_rotation = False

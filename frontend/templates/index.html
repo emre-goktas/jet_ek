@@ -51,6 +51,9 @@
       </ul>
       <!-- Bulk Download Container -->
       <div id="bulk-download-container" class="hidden p-3 border-t border-gray-800 bg-gray-900 space-y-2">
+        <select id="template-select" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-blue-500 transition-colors mb-2">
+          <!-- Populated by JS -->
+        </select>
         <button id="btn-download-all" 
           class="w-full py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg border border-blue-500 transition-all duration-150 flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 cursor-pointer" 
           onclick="downloadAllAsZip()">
@@ -321,6 +324,22 @@
     }
     
     document.addEventListener('DOMContentLoaded', () => {
+      // Load templates for download
+      fetch('/api/templates')
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById('template-select');
+            if (select) {
+                select.innerHTML = '';
+                data.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.textContent = t.name;
+                    select.appendChild(opt);
+                });
+            }
+        }).catch(err => console.error("Failed to load templates", err));
+
       const viewer = document.getElementById('viewer');
       viewer.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -797,7 +816,14 @@
         const href = a.getAttribute('href');
         return href.substring(href.lastIndexOf('/') + 1);
       });
-      window.location.href = `/download-zip?file_ids=${ids.join(',')}`;
+      
+      const select = document.getElementById('template-select');
+      const templateId = select ? select.value : '';
+      let url = `/download-zip?file_ids=${ids.join(',')}`;
+      if (templateId) {
+          url += `&template_id=${templateId}`;
+      }
+      window.location.href = url;
     }
 
     function downloadAllNumberedAsZip() {
@@ -807,7 +833,14 @@
         const href = a.getAttribute('href');
         return href.substring(href.lastIndexOf('/') + 1);
       });
-      window.location.href = `/download-zip-numbered?file_ids=${ids.join(',')}`;
+      
+      const select = document.getElementById('template-select');
+      const templateId = select ? select.value : '';
+      let url = `/download-zip-numbered?file_ids=${ids.join(',')}`;
+      if (templateId) {
+          url += `&template_id=${templateId}`;
+      }
+      window.location.href = url;
     }
 
     let currentPreviewZoom = 1;
