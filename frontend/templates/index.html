@@ -19,7 +19,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/app.css?v=4" />
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
   <!-- SortableJS script'ini ekle -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
@@ -357,6 +357,20 @@
           showUploadLangModal();
         }
       });
+      
+      const outputList = document.getElementById('output-list');
+      if (outputList) {
+        new Sortable(outputList, {
+          animation: 150,
+          ghostClass: 'sortable-ghost',
+          dragClass: 'sortable-drag',
+          forceFallback: true,
+          fallbackClass: 'sortable-drag',
+          filter: 'button, a',
+          preventOnFilter: false
+        });
+      }
+
       updateBulkDownloadVisibility();
     });
 

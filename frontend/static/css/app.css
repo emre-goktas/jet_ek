@@ -339,3 +339,43 @@ body.modal-open {
   background: #3b82f6;
   /* Hover highlight to restore */
 }
+
+/* ─── Sortable Output List Row Numbers ──────────────── */
+#output-list {
+  counter-reset: pdf-item-counter;
+  position: relative;
+}
+
+#output-list > li:not(#output-empty) {
+  counter-increment: pdf-item-counter;
+  position: relative;
+  padding-left: 36px;
+  margin-bottom: 8px;
+}
+
+#output-list > li:not(#output-empty)::before {
+  content: counter(pdf-item-counter);
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  background: #1f2937;
+  color: #9ca3af;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #374151;
+  border-radius: 8px 0 0 8px;
+  z-index: 10;
+}
+
+.sortable-drag::before {
+  display: none !important;
+}
+
+.sortable-ghost {
+  opacity: 0.4;
+}
