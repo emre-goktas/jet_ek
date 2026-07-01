@@ -212,43 +212,6 @@
 
     </div>
   </div>
-  <!-- UPLOAD LANGUAGE SELECTOR MODAL -->
-  <div id="upload-lang-modal" class="modal-overlay" onclick="closeUploadLangModal()">
-    <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-8 flex flex-col shadow-2xl"
-      style="max-width: 28rem; width: 100%;" onclick="event.stopPropagation()">
-      <p class="text-xl text-white font-medium text-center leading-relaxed mb-6">
-        Select OCR language for the uploaded document
-      </p>
-      
-      <div class="mb-6">
-        <p class="text-xs text-gray-500 text-center mb-4">Single language is faster — choose <span class="text-blue-400">Both</span> only if your document is mixed.</p>
-        <div class="flex justify-center gap-2">
-          <button id="upload-lang-btn-tur"
-            class="lang-btn lang-btn-active px-4 py-1.5 text-xs rounded-full border transition-colors"
-            onclick="setUploadOcrLang('tur', this)">🇹🇷 Turkish</button>
-          <button id="upload-lang-btn-eng"
-            class="lang-btn px-4 py-1.5 text-xs rounded-full border transition-colors"
-            onclick="setUploadOcrLang('eng', this)">🇬🇧 English</button>
-          <button id="upload-lang-btn-both"
-            class="lang-btn px-4 py-1.5 text-xs rounded-full border transition-colors"
-            onclick="setUploadOcrLang('tur+eng', this)">🌐 Both</button>
-        </div>
-      </div>
-      
-      <div class="flex justify-center gap-4 w-full">
-        <button
-          class="px-5 py-2.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors"
-          onclick="closeUploadLangModal()">
-          Cancel
-        </button>
-        <button
-          class="px-5 py-2.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-lg shadow-blue-500/30 transition-colors"
-          onclick="confirmUploadWithLang()">
-          OK, Proceed
-        </button>
-      </div>
-    </div>
-  </div>
 
   <script>
     let selectedPages = new Set();
@@ -267,39 +230,6 @@
       btn.classList.add('lang-btn-active');
     }
 
-    function setUploadOcrLang(lang, btn) {
-      selectedOcrLang = lang;
-      document.querySelectorAll('#upload-lang-modal .lang-btn').forEach(b => b.classList.remove('lang-btn-active'));
-      btn.classList.add('lang-btn-active');
-    }
-
-    function showUploadLangModal() {
-      document.querySelectorAll('#upload-lang-modal .lang-btn').forEach(b => b.classList.remove('lang-btn-active'));
-      if (selectedOcrLang === 'tur') {
-        document.getElementById('upload-lang-btn-tur').classList.add('lang-btn-active');
-      } else if (selectedOcrLang === 'eng') {
-        document.getElementById('upload-lang-btn-eng').classList.add('lang-btn-active');
-      } else {
-        document.getElementById('upload-lang-btn-both').classList.add('lang-btn-active');
-      }
-      document.getElementById('upload-lang-modal').classList.add('active');
-      document.body.classList.add('modal-open');
-    }
-
-    function closeUploadLangModal() {
-      const m = document.getElementById('upload-lang-modal');
-      if (m) m.classList.remove('active');
-      document.body.classList.remove('modal-open');
-      pendingFiles = [];
-    }
-
-    function confirmUploadWithLang() {
-      const files = [...pendingFiles];
-      closeUploadLangModal();
-      if (files.length > 0) {
-        processFiles(files);
-      }
-    }
 
     function handleDrop(e) {
       e.preventDefault();
@@ -307,8 +237,7 @@
       if (zone) zone.classList.remove('border-blue-400', 'bg-blue-950');
       const files = Array.from(e.dataTransfer.files);
       if (files.length > 0) {
-        pendingFiles = files;
-        showUploadLangModal();
+        processFiles(files);
       }
     }
 
@@ -317,8 +246,7 @@
       if (zone) zone.classList.remove('border-blue-400', 'bg-blue-950');
       const files = Array.from(input.files);
       if (files.length > 0) {
-        pendingFiles = files;
-        showUploadLangModal();
+        processFiles(files);
       }
       input.value = ""; // reset
     }
@@ -353,8 +281,7 @@
         viewer.classList.remove('bg-gray-800', 'bg-opacity-50');
         const files = Array.from(e.dataTransfer.files);
         if (files.length > 0) {
-          pendingFiles = files;
-          showUploadLangModal();
+          processFiles(files);
         }
       });
       
