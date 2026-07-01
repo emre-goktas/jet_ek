@@ -618,12 +618,50 @@
       document.body.classList.add('modal-open');
     }
 
+    let renamingFileId = null;
+
     function proceedToExtract() {
       const input = document.getElementById('custom-filename').value.trim();
-      currentCustomName = input || 'extracted'; // default fallback if empty
+      currentCustomName = input || (renamingFileId ? 'renamed_file' : 'extracted'); 
       
       closeNamingModal();
-      confirmExtract(true);
+      
+      if (renamingFileId) {
+        submitRename(renamingFileId, currentCustomName);
+        renamingFileId = null;
+      } else {
+        confirmExtract(true);
+      }
+    }
+
+    function openRenameModal(fileId, currentName) {
+      renamingFileId = fileId;
+      
+      const previewImg = document.getElementById('naming-preview-img');
+      previewImg.src = '/page/' + fileId + '/0';
+      resetZoom();
+      
+      const m = document.getElementById('naming-modal');
+      if (m) m.classList.remove('hidden');
+      document.body.classList.add('modal-open');
+      
+      const input = document.getElementById('custom-filename');
+      let baseName = currentName.replace(/\.pdf$/i, '');
+      input.value = baseName;
+      input.focus();
+    }
+
+    async function submitRename(fileId, newName) {
+      const res = await postAction('/rename/' + fileId, { custom_name: newName });
+      if (res) {
+        const link = document.querySelector(`a.download-btn[href='/download/${fileId}']`);
+        if (link) {
+          const li = link.closest('li');
+          if (li) {
+            li.innerHTML = res;
+          }
+        }
+      }
     }
 
     function appendLoadingToOutputList(taskId, filename) {

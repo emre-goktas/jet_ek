@@ -75,6 +75,49 @@ def extract_pages(req: ExtractRequest, background_tasks: BackgroundTasks, reques
         },
     )
 
+class RenameRequest(BaseModel):
+    custom_name: str
+
+@router.post("/rename/{file_id}")
+def rename_pdf(file_id: str, req: RenameRequest, request: Request):
+    """Renames an extracted PDF and returns the updated HTML fragment."""
+    try:
+        path = pdf_service.get_output_path(file_id)
+        # Parse the old filename to preserve its label if needed, but since it's just UUID_filename,
+        # we can just construct the new name.
+        new_filename = f"{req.custom_name}.pdf"
+        new_path = path.parent / f"{file_id}_{new_filename}"
+        
+        if path != new_path:
+            path.rename(new_path)
+            
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rename error: {e}")
+
+    # Estimate page count or label? For renaming, we might lose the page count label.
+    # Let's try to get page count if we can, or just display "Renamed".
+    import pymupdf
+    try:
+        doc = pymupdf.open(str(new_path))
+        count = len(doc)
+        doc.close()
+        label = f"{count} Pages" if count > 1 else "Page 1"
+    except Exception:
+        label = "PDF"
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/pdf_item.html",
+        context={
+            "request": request,
+            "file_id": file_id,
+            "filename": new_filename,
+            "label": label,
+        },
+    )
+
 @router.get("/extract-status/{task_id}")
 async def get_extract_status(task_id: str, request: Request):
     """Returns the status of OCR performed during extraction."""
