@@ -160,7 +160,7 @@
       style="max-width: 40rem; width: 100%; height: 90vh;" onclick="event.stopPropagation()">
       
       <!-- Top: Preview (Large) -->
-      <div class="flex-1 bg-gray-950 p-4 flex flex-col border-b border-gray-800 overflow-hidden relative">
+      <div class="w-full flex-1 bg-gray-950 p-4 flex flex-col border-b border-gray-800 overflow-hidden relative">
           <div class="flex justify-between items-center mb-2 z-10">
               <p class="text-xs text-gray-400 uppercase tracking-widest font-semibold">First Page Preview</p>
               <div class="flex gap-2">
@@ -175,27 +175,26 @@
       </div>
 
       <!-- Bottom: Form -->
-      <div class="p-6 flex flex-col justify-center shrink-0">
-          <p class="text-lg text-white font-medium text-center mb-4">
+      <div class="w-full px-4 py-6 flex flex-col justify-center shrink-0">
+          <p class="text-lg text-white font-medium text-center mb-6">
             Name your extracted file
           </p>
           <div class="mb-4 w-full flex flex-col gap-3">
             <div class="w-full relative">
-                <label for="custom-filename" class="block text-xs text-gray-400 mb-2 uppercase tracking-widest text-center">Belge İsmi</label>
-                <input type="text" id="custom-filename" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" placeholder="Örn. ifade tutanağı" autocomplete="off" />
+                <input type="text" id="custom-filename" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-6 py-5 text-white text-xl font-medium text-center focus:outline-none focus:border-blue-500 transition-colors shadow-inner" placeholder="Örn. ifade tutanağı" autocomplete="off" />
                 <!-- Custom Autocomplete Dropdown -->
-                <ul id="custom-autocomplete-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 max-h-60 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg shadow-[0_0_30px_rgba(0,0,0,0.6)] z-50 text-sm ring-1 ring-gray-700/50">
+                <ul id="custom-autocomplete-dropdown" class="hidden absolute left-0 right-0 top-full mt-2 max-h-60 overflow-y-auto bg-gray-900 border border-gray-700 rounded-xl shadow-[0_0_30px_rgba(0,0,0,0.6)] z-50 text-base ring-1 ring-gray-700/50">
                 </ul>
             </div>
           </div>
           <div class="flex justify-center gap-4 w-full mt-2">
             <button
-              class="flex-1 px-5 py-2.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors"
+              class="flex-1 px-5 py-3 text-base bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl border border-gray-700 transition-colors font-medium"
               onclick="closeNamingModal()">
               Cancel
             </button>
             <button
-              class="flex-1 px-5 py-2.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-lg shadow-blue-500/30 transition-colors"
+              class="flex-1 px-5 py-3 text-base bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/30 transition-colors"
               onclick="proceedToExtract()">
               Next
             </button>
