@@ -240,24 +240,7 @@ def extract_pages(pages: list[dict], custom_name: str | None = None, file_counte
     file_id = uuid.uuid4().hex
     
     if custom_name:
-        if file_counter is not None:
-            next_num = file_counter
-        else:
-            max_num = 0
-            # Iterate over all PDF files to find the maximum global prefix number (fallback)
-            for f in STORAGE_DIR.glob("*.pdf"):
-                parts = f.name.split('_')
-                # Expected format: UUID_01_customname.pdf
-                if len(parts) >= 3:
-                    try:
-                        num = int(parts[1])
-                        if num > max_num:
-                            max_num = num
-                    except ValueError:
-                        pass
-            next_num = max_num + 1
-            
-        filename = f"{next_num:02d}_{custom_name}.pdf"
+        filename = f"{custom_name}.pdf"
     else:
         # Append selected page count to filename
         count = len(pages)

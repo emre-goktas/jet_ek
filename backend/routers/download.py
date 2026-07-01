@@ -102,7 +102,8 @@ def download_zip(file_ids: str, template_id: str | None = None):
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         # Add PDF files
         for f in files_data:
-            zip_file.write(f["path"], arcname=f["filename"])
+            zip_filename = f"{f['ek_no']:02d}_{f['filename']}"
+            zip_file.write(f["path"], arcname=zip_filename)
             
         try:
             docx_bytes = generate_docx_from_template(files_data, template_id)
@@ -187,12 +188,14 @@ def download_zip_numbered(file_ids: str, template_id: str | None = None):
                     page.insert_text(point, text, fontsize=12, color=(1, 0, 0), fontname="hebo")
                 pdf_bytes = doc.tobytes()
                 doc.close()
-                zip_file.writestr(f["filename"], pdf_bytes)
+                zip_filename = f"{f['ek_no']:02d}_{f['filename']}"
+                zip_file.writestr(zip_filename, pdf_bytes)
             except Exception as e:
                 import logging
                 logging.error(f"Failed to stamp PDF {f['filename']}: {e}")
                 # Fallback to writing unmodified if stamping fails
-                zip_file.write(f["path"], arcname=f["filename"])
+                zip_filename = f"{f['ek_no']:02d}_{f['filename']}"
+                zip_file.write(f["path"], arcname=zip_filename)
             
         try:
             docx_bytes = generate_docx_from_template(files_data, template_id)

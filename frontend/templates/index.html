@@ -707,7 +707,7 @@
       // Generate temporary display filename
       let displayFilename = '';
       if (currentCustomName) {
-        displayFilename = `${String(fileCounter).padStart(2, '0')}_${currentCustomName}.pdf`;
+        displayFilename = `${currentCustomName}.pdf`;
       } else {
         const count = extractionList.length;
         const label = count === 1 ? `page_${extractionList[0].page_idx + 1}` : `${count}_pages`;
@@ -733,15 +733,9 @@
           if (loader) {
             loader.id = `loading-task-${res}`;
           }
-          if (currentCustomName !== '') {
-            fileCounter++;
-          }
           pollExtractTask(res);
         } else {
           replaceLoadingWithOutput(tempUiId, res);
-          if (currentCustomName !== '') {
-            fileCounter++;
-          }
         }
       } else {
         const loader = document.getElementById(`loading-task-${tempUiId}`);
