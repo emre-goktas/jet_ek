@@ -240,7 +240,14 @@ def extract_pages(pages: list[dict], custom_name: str | None = None, file_counte
     file_id = uuid.uuid4().hex
     
     if custom_name:
-        filename = f"{custom_name}.pdf"
+        # Sanitize filename: replace newlines with spaces
+        clean_name = custom_name.replace('\n', ' ').replace('\r', '').strip()
+        # Truncate by UTF-8 bytes instead of characters to safely fit ext4's 255 byte limit.
+        # 255 (max) - 37 (uuid + .pdf) = 218 bytes max. We'll use 210 for safety.
+        encoded = clean_name.encode('utf-8')
+        if len(encoded) > 210:
+            clean_name = encoded[:210].decode('utf-8', 'ignore').strip()
+        filename = f"{clean_name}.pdf"
     else:
         # Append selected page count to filename
         count = len(pages)
