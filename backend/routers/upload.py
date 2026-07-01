@@ -11,7 +11,6 @@ import os
 import tempfile
 
 from backend.services import pdf_service
-from backend import database
 
 router = APIRouter()
 templates = Jinja2Templates(
@@ -80,50 +79,4 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
     })
     return response
 
-@router.get("/ocr-status/{task_id}")
-async def get_ocr_status(request: Request, task_id: str):
-    task = database.get_task(task_id)
-    if not task:
-        return HTMLResponse("<div class='text-red-500 flex justify-center items-center h-full'>Task not found.</div>")
-    
-    status = task.get("status")
-    
-    if status in ["pending", "processing"]:
-        return HTMLResponse(f"""
-        <div id="viewer-inner" class="flex flex-col items-center justify-center h-full gap-4 text-gray-400"
-             hx-get="/ocr-status/{task_id}" hx-trigger="every 1.5s" hx-swap="outerHTML">
-            <svg class="w-12 h-12 animate-spin text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-            </svg>
-            <p class="text-lg font-semibold animate-pulse">Processing OCR...</p>
-            <p class="text-sm">This may take a few minutes depending on the file size.</p>
-        </div>
-        """)
-        
-    elif status == "failed":
-        err = task.get("error_message", "Unknown Error")
-        return HTMLResponse(f"<div class='text-red-500 flex justify-center items-center h-full'>OCR Error: {err}</div>")
-        
-    elif status == "done":
-        pdf_id = task.get("pdf_id")
-        page_count = task.get("page_count")
-        filename = task.get("filename")
-        
-        response = templates.TemplateResponse(
-            request=request,
-            name="partials/viewer.html",
-            context={
-                "request": request,
-                "pdf_id": pdf_id,
-                "page_count": page_count,
-                "filename": filename,
-            },
-        )
-        response.headers["HX-Trigger"] = json.dumps({
-            "viewerReady": {
-                "pdfId": pdf_id, 
-                "pageCount": page_count
-            }
-        })
-        return response
+

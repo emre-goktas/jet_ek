@@ -12,7 +12,6 @@ import logging
 
 from backend.routers import upload, pages, extract, download, templates as templates_router
 from backend.services.pdf_service import STORAGE_DIR, is_file_locked
-from backend.database import init_db, cleanup_orphan_tasks
 
 BASE_DIR = Path(__file__).parent.parent
 TEMPLATES_DIR = BASE_DIR / "frontend" / "templates"
@@ -32,7 +31,6 @@ async def cleanup_old_files():
                             p.unlink(missing_ok=True)
                 except Exception as e:
                     logging.warning(f"Cleanup failed for {p}: {e}")
-            await cleanup_orphan_tasks()
         except Exception as e:
             logging.error(f"Global cleanup loop error: {e}")
         await asyncio.sleep(3600)
@@ -41,7 +39,6 @@ async def cleanup_old_files():
 async def lifespan(app: FastAPI):
     # Startup
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    init_db()
     cleanup_task = asyncio.create_task(cleanup_old_files())
     yield
     cleanup_task.cancel()

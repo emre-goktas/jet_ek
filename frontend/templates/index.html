@@ -208,16 +208,9 @@
     let lastClickedCardId = null;
     let pageRotations = {};
     let sortableInstance = null;
-    let selectedOcrLang = 'tur';
     let currentCustomName = '';
     let fileCounter = 1;
     let pendingFiles = [];
-
-    function setOcrLang(lang, btn) {
-      selectedOcrLang = lang;
-      document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('lang-btn-active'));
-      btn.classList.add('lang-btn-active');
-    }
 
 
     function handleDrop(e) {
@@ -580,7 +573,7 @@
             </svg>
             <div class="flex-1 min-w-0">
               <p class="text-xs font-medium text-gray-400 truncate" title="${filename}">${filename}</p>
-              <p class="text-[10px] text-blue-400 font-semibold animate-pulse mt-0.5">Processing OCR...</p>
+              <p class="text-[10px] text-blue-400 font-semibold animate-pulse mt-0.5">Processing...</p>
             </div>
           </div>
           <div class="w-full bg-gray-850 rounded-full h-1 overflow-hidden">
@@ -622,7 +615,7 @@
       }
     }
 
-    async function confirmExtract(useOCR) {
+    async function confirmExtract() {
       if (selectedPages.size === 0) return;
 
       const cardsInOrder = Array.from(document.querySelectorAll('.page-card'));
@@ -659,22 +652,12 @@
 
       const res = await postAction('/extract', {
         pages: extractionList,
-        ocr: useOCR,
-        ocr_lang: selectedOcrLang,
         custom_name: currentCustomName,
         file_counter: fileCounter
       });
 
       if (res) {
-        if (res.startsWith('TASK_')) {
-          const loader = document.getElementById(`loading-task-${tempUiId}`);
-          if (loader) {
-            loader.id = `loading-task-${res}`;
-          }
-          pollExtractTask(res);
-        } else {
-          replaceLoadingWithOutput(tempUiId, res);
-        }
+        replaceLoadingWithOutput(tempUiId, res);
       } else {
         const loader = document.getElementById(`loading-task-${tempUiId}`);
         if (loader) loader.remove();
@@ -683,26 +666,7 @@
       }
     }
 
-    async function pollExtractTask(taskId) {
-      try {
-        const res = await fetch(`/extract-status/${taskId}`);
-        if (!res.ok) {
-          handleLoadingFailure(taskId, 'Server error occurred');
-          return;
-        }
-        const data = await res.json();
-        if (data.status === "pending" || data.status === "processing") {
-          setTimeout(() => pollExtractTask(taskId), 1500);
-        } else if (data.status === "done") {
-          replaceLoadingWithOutput(taskId, data.html);
-          showStatus('✓ Extraction completed.', 'text-green-400');
-        } else {
-          handleLoadingFailure(taskId, data.error || 'OCR Error');
-        }
-      } catch (e) {
-        handleLoadingFailure(taskId, e.message || 'Connection error');
-      }
-    }
+
 
     async function postAction(url, body) {
       try {
