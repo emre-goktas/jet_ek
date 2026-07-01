@@ -74,16 +74,12 @@ def _set_cell_text(cell, text, align="left", bold=False):
     elif align == "right":
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-def generate_docx_from_template(files_data: list[dict], template_id: str = None) -> bytes:
+def generate_docx_from_template(files_data: list[dict]) -> bytes:
     templates = get_templates()
     if not templates:
         raise ValueError("No templates available.")
         
-    template = None
-    if template_id:
-        template = next((t for t in templates if t["id"] == template_id), None)
-    if not template:
-        template = templates[0] # Fallback to first
+    template = templates[0]
 
     # NEW: Handle file_path mode using native python-docx
     if template.get("file_path"):

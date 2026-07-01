@@ -40,7 +40,7 @@ def download_pdf(file_id: str):
 
 
 @router.get("/download-zip")
-def download_zip(file_ids: str, template_id: str | None = None):
+def download_zip(file_ids: str):
     """Downloads a ZIP containing the PDFs specified by comma-separated file_ids along with an index list Word file."""
     if not file_ids:
         raise HTTPException(status_code=400, detail="No files specified.")
@@ -106,7 +106,7 @@ def download_zip(file_ids: str, template_id: str | None = None):
             zip_file.write(f["path"], arcname=zip_filename)
             
         try:
-            docx_bytes = generate_docx_from_template(files_data, template_id)
+            docx_bytes = generate_docx_from_template(files_data)
             zip_file.writestr("Ek Belgeler Listesi.docx", docx_bytes)
         except Exception as e:
             # If DOCX generation fails, log it but don't break the ZIP download
@@ -122,7 +122,7 @@ def download_zip(file_ids: str, template_id: str | None = None):
 
 
 @router.get("/download-zip-numbered")
-def download_zip_numbered(file_ids: str, template_id: str | None = None):
+def download_zip_numbered(file_ids: str):
     """Downloads a ZIP containing the PDFs with EK numbers stamped on each page."""
     if not file_ids:
         raise HTTPException(status_code=400, detail="No files specified.")
@@ -198,7 +198,7 @@ def download_zip_numbered(file_ids: str, template_id: str | None = None):
                 zip_file.write(f["path"], arcname=zip_filename)
             
         try:
-            docx_bytes = generate_docx_from_template(files_data, template_id)
+            docx_bytes = generate_docx_from_template(files_data)
             zip_file.writestr("Ek Belgeler Listesi.docx", docx_bytes)
         except Exception as e:
             import logging

@@ -51,9 +51,7 @@
       </ul>
       <!-- Bulk Download Container -->
       <div id="bulk-download-container" class="hidden p-3 border-t border-gray-800 bg-gray-900 space-y-2">
-        <select id="template-select" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-blue-500 transition-colors mb-2">
-          <!-- Populated by JS -->
-        </select>
+
         <button id="btn-download-all" 
           class="w-full py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg border border-blue-500 transition-all duration-150 flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 cursor-pointer" 
           onclick="downloadAllAsZip()">
@@ -182,12 +180,6 @@
             Name your extracted file
           </p>
           <div class="mb-4 w-full flex flex-col gap-3">
-            <div class="w-full">
-                <label for="report-type" class="block text-xs text-gray-400 mb-2 uppercase tracking-widest text-center">Rapor Türü</label>
-                <select id="report-type" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" onchange="updateAutocompleteOptions()">
-                    <!-- Options populated via JS -->
-                </select>
-            </div>
             <div class="w-full relative">
                 <label for="custom-filename" class="block text-xs text-gray-400 mb-2 uppercase tracking-widest text-center">Belge İsmi</label>
                 <input type="text" id="custom-filename" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" placeholder="Örn. ifade tutanağı" autocomplete="off" />
@@ -252,22 +244,6 @@
     }
     
     document.addEventListener('DOMContentLoaded', () => {
-      // Load templates for download
-      fetch('/api/templates')
-        .then(res => res.json())
-        .then(data => {
-            const select = document.getElementById('template-select');
-            if (select) {
-                select.innerHTML = '';
-                data.forEach(t => {
-                    const opt = document.createElement('option');
-                    opt.value = t.id;
-                    opt.textContent = t.name;
-                    select.appendChild(opt);
-                });
-            }
-        }).catch(err => console.error("Failed to load templates", err));
-
       const viewer = document.getElementById('viewer');
       viewer.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -790,12 +766,7 @@
         return href.substring(href.lastIndexOf('/') + 1);
       });
       
-      const select = document.getElementById('template-select');
-      const templateId = select ? select.value : '';
       let url = `/download-zip?file_ids=${ids.join(',')}`;
-      if (templateId) {
-          url += `&template_id=${templateId}`;
-      }
       window.location.href = url;
     }
 
@@ -807,12 +778,7 @@
         return href.substring(href.lastIndexOf('/') + 1);
       });
       
-      const select = document.getElementById('template-select');
-      const templateId = select ? select.value : '';
       let url = `/download-zip-numbered?file_ids=${ids.join(',')}`;
-      if (templateId) {
-          url += `&template_id=${templateId}`;
-      }
       window.location.href = url;
     }
 
@@ -898,22 +864,13 @@
             if (!res.ok) throw new Error('Failed to fetch autocomplete data');
             autocompleteData = await res.json();
             
-            const reportTypeSelect = document.getElementById('report-type');
-            if (!reportTypeSelect) return;
-            
-            reportTypeSelect.innerHTML = '';
-            
+            const allItems = [];
             for (const key in autocompleteData) {
-                const option = document.createElement('option');
-                option.value = key;
-                // Prettify common keys
-                if (key === 'is_kazasi') option.textContent = 'İş Kazası';
-                else if (key === 'meslek_hastaligi') option.textContent = 'Meslek Hastalığı';
-                else option.textContent = key;
-                reportTypeSelect.appendChild(option);
+                const data = autocompleteData[key];
+                if (data.document_types) allItems.push(...data.document_types);
+                if (data.document_templates) allItems.push(...data.document_templates);
             }
-            
-            updateAutocompleteOptions();
+            allAutocompleteItems = [...new Set(allItems)];
         } catch (err) {
             console.error('Error loading autocomplete data:', err);
         }
@@ -923,20 +880,6 @@
     let autocompleteSelectedIndex = -1;
     let filteredItems = [];
     let currentAutocompletePrefix = '';
-
-    function updateAutocompleteOptions() {
-        const reportTypeSelect = document.getElementById('report-type');
-        if (!reportTypeSelect) return;
-        const reportType = reportTypeSelect.value;
-        
-        if (autocompleteData[reportType]) {
-            const data = autocompleteData[reportType];
-            const allItems = [...(data.document_types || []), ...(data.document_templates || [])];
-            allAutocompleteItems = [...new Set(allItems)];
-        } else {
-            allAutocompleteItems = [];
-        }
-    }
 
     function formatAutocompleteItem(text, query) {
         if (query) {
