@@ -16,7 +16,7 @@ def get_db_connection():
     if not hasattr(_local, "conn"):
         # check_same_thread=False allows sharing but thread-local is safer for sqlite.
         # It's okay to just use thread-locals for Fastapi's sync endpoints or asyncio threadpool.
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15.0)
         conn.row_factory = sqlite3.Row
         _local.conn = conn
     return _local.conn

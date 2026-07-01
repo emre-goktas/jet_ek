@@ -38,17 +38,16 @@ def preprocess_to_pdf(filepath: Path, original_filename: str) -> tuple[Path, str
     if filetype == "pdf":
         try:
             # Parse only to check if it is corrupted
-            doc = fitz.open(str(filepath))
-            doc.close()
+            with fitz.open(str(filepath)) as doc:
+                pass
             return filepath, final_filename
         except Exception:
             raise ValueError("Corrupted PDF file. Please upload a valid document.")
             
     # Image file, convert to pdf
     try:
-        doc = fitz.open(str(filepath))
-        pdf_bytes = doc.convert_to_pdf()
-        doc.close()
+        with fitz.open(str(filepath)) as doc:
+            pdf_bytes = doc.convert_to_pdf()
         
         fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf")
         with os.fdopen(fd, 'wb') as f:

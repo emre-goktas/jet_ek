@@ -129,7 +129,8 @@
     <div id="drop-zone" class="relative border-2 border-dashed border-gray-700 rounded-xl p-5 text-center
              hover:border-blue-500 transition-colors duration-200 overflow-hidden"
       ondragover="event.preventDefault(); this.classList.add('border-blue-400','bg-blue-950')"
-      ondragleave="this.classList.remove('border-blue-400','bg-blue-950')">
+      ondragleave="this.classList.remove('border-blue-400','bg-blue-950')"
+      ondrop="handleDrop(event)">
       
       <input id="file-input" type="file" accept=".pdf,.tiff,.tif,.jpeg,.jpg,.png" multiple
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"

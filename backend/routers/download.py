@@ -32,10 +32,16 @@ def download_pdf(file_id: str):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found.")
 
+    try:
+        metadata = pdf_service.get_metadata(file_id)
+        filename = f"{metadata.get('custom_name', file_id)}.pdf"
+    except Exception:
+        filename = f"{file_id}.pdf"
+
     return FileResponse(
         path=str(path),
         media_type="application/pdf",
-        filename=path.name.split("_", 1)[1] if "_" in path.name else path.name,
+        filename=filename,
     )
 
 
