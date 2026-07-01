@@ -130,23 +130,28 @@ def extract_pages(pages: list[dict], custom_name: str | None = None, file_counte
     new_doc = pymupdf.open()
     has_rotation = False
     
-    for p in pages:
-        pid = p.get("pdf_id")
-        idx = p.get("page_idx")
-        rot = p.get("rotation", 0)
-        
-        src_path = _src_path(pid)
-        with lock_file(src_path):
-            src_doc = pymupdf.open(str(src_path))
-            try:
-                if 0 <= idx < len(src_doc):
-                    new_doc.insert_pdf(src_doc, from_page=idx, to_page=idx)
-                    if rot != 0:
-                        page = new_doc[-1]
-                        page.set_rotation((page.rotation + rot) % 360)
-                        has_rotation = True
-            finally:
-                src_doc.close()
+    from contextlib import ExitStack
+    open_docs = {}
+    
+    with ExitStack() as stack:
+        for p in pages:
+            pid = p.get("pdf_id")
+            idx = p.get("page_idx")
+            rot = p.get("rotation", 0)
+            
+            if pid not in open_docs:
+                src_path = _src_path(pid)
+                stack.enter_context(lock_file(src_path))
+                src_doc = stack.enter_context(pymupdf.open(str(src_path)))
+                open_docs[pid] = src_doc
+                
+            src_doc = open_docs[pid]
+            if 0 <= idx < len(src_doc):
+                new_doc.insert_pdf(src_doc, from_page=idx, to_page=idx)
+                if rot != 0:
+                    page = new_doc[-1]
+                    page.set_rotation((page.rotation + rot) % 360)
+                    has_rotation = True
 
     file_id = uuid.uuid4().hex
     
