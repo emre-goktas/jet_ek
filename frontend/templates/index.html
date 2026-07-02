@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PDF REGULATOR</title>
+  <link rel="icon" type="image/jpeg" href="/static/icon.jpg" />
   <meta name="description"
     content="Professional PDF tool to extract, rotate, and optimize pages with advanced text recognition and cleanup." />
   <script src="https://cdn.tailwindcss.com"></script>
@@ -127,13 +128,15 @@
   <!-- UPLOAD AREA -->
   <footer class="bg-gray-900 border-t border-gray-800 px-6 py-4 shrink-0">
     <div id="drop-zone" class="relative border-2 border-dashed border-gray-700 rounded-xl p-5 text-center
-             hover:border-blue-500 transition-colors duration-200 overflow-hidden"
+             hover:border-blue-500 transition-colors duration-200 overflow-hidden cursor-pointer"
+      onclick="document.getElementById('file-input').click()"
       ondragover="event.preventDefault(); this.classList.add('border-blue-400','bg-blue-950')"
       ondragleave="this.classList.remove('border-blue-400','bg-blue-950')"
       ondrop="handleDrop(event)">
       
       <input id="file-input" type="file" accept=".pdf,.tiff,.tif,.jpeg,.jpg,.png" multiple
-        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+        class="hidden"
+        onclick="event.stopPropagation(); this.value = null;"
         onchange="uploadFile(this)" title="Choose files or drag them here" />
 
       <p class="text-sm text-gray-400 pointer-events-none relative z-0">
