@@ -78,5 +78,3 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         }
     })
     return response
-
-

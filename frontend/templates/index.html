@@ -129,14 +129,12 @@
   <footer class="bg-gray-900 border-t border-gray-800 px-6 py-4 shrink-0">
     <div id="drop-zone" class="relative border-2 border-dashed border-gray-700 rounded-xl p-5 text-center
              hover:border-blue-500 transition-colors duration-200 overflow-hidden cursor-pointer"
-      onclick="document.getElementById('file-input').click()"
       ondragover="event.preventDefault(); this.classList.add('border-blue-400','bg-blue-950')"
       ondragleave="this.classList.remove('border-blue-400','bg-blue-950')"
       ondrop="handleDrop(event)">
       
       <input id="file-input" type="file" accept=".pdf,.tiff,.tif,.jpeg,.jpg,.png" multiple
-        class="hidden"
-        onclick="event.stopPropagation(); this.value = null;"
+        class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
         onchange="uploadFile(this)" title="Choose files or drag them here" />
 
       <p class="text-sm text-gray-400 pointer-events-none relative z-0">
@@ -144,6 +142,7 @@
       </p>
     </div>
     <div id="upload-status" class="text-xs text-center mt-2 text-gray-500 hidden"></div>
+
   </footer>
 
   <!-- PREVIEW MODAL -->
@@ -214,22 +213,27 @@
 
 
     function handleDrop(e) {
+      console.log('DEBUG: handleDrop called', e);
       e.preventDefault();
       const zone = document.getElementById('drop-zone');
       if (zone) zone.classList.remove('border-blue-400', 'bg-blue-950');
       const files = Array.from(e.dataTransfer.files);
+      console.log('DEBUG: handleDrop files:', files);
       if (files.length > 0) {
         processFiles(files);
       }
     }
 
     function uploadFile(input) {
+      console.log('DEBUG: uploadFile called, input value:', input.value);
       const zone = document.getElementById('drop-zone');
       if (zone) zone.classList.remove('border-blue-400', 'bg-blue-950');
       const files = Array.from(input.files);
+      console.log('DEBUG: uploadFile files:', files);
       if (files.length > 0) {
         processFiles(files);
       }
+      console.log('DEBUG: resetting input.value to empty string');
       input.value = ""; // reset
     }
     
