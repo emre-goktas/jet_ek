@@ -26,34 +26,48 @@ def get_template(template_id: str):
 def number_to_turkish_words(n):
     if n == 0:
         return "sıfır"
-    
+
     ones = ["", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz"]
     tens = ["", "on", "yirmi", "otuz", "kırk", "elli", "altmış", "yetmiş", "seksen", "doksan"]
+    scales = ["", "bin", "milyon", "milyar", "trilyon"]
+
+    def read_three_digits(num):
+        words = []
+        h = num // 100
+        t = (num % 100) // 10
+        o = num % 10
+        
+        if h > 1:
+            words.append(ones[h])
+        if h > 0:
+            words.append("yüz")
+            
+        if t > 0:
+            words.append(tens[t])
+            
+        if o > 0:
+            words.append(ones[o])
+            
+        return "".join(words)
+
+    result = []
+    scale_idx = 0
     
-    words = []
-    
-    if n >= 1000:
-        thousands = n // 1000
-        if thousands > 1:
-            words.append(ones[thousands])
-        words.append("bin")
-        n %= 1000
+    while n > 0:
+        chunk = n % 1000
+        if chunk > 0:
+            chunk_words = read_three_digits(chunk)
+            
+            # 1 bin denmez, sadece bin denir.
+            if scale_idx == 1 and chunk == 1:
+                result.append("bin")
+            else:
+                result.append(chunk_words + scales[scale_idx])
+                
+        n //= 1000
+        scale_idx += 1
         
-    if n >= 100:
-        hundreds = n // 100
-        if hundreds > 1:
-            words.append(ones[hundreds])
-        words.append("yüz")
-        n %= 100
-        
-    if n >= 10:
-        words.append(tens[n // 10])
-        n %= 10
-        
-    if n > 0:
-        words.append(ones[n])
-        
-    return "".join(words)
+    return "".join(reversed(result))
 
 def apply_bold_center(cell):
     for p in cell.paragraphs:
