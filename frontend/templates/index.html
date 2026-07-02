@@ -179,7 +179,7 @@
       <div class="w-full px-4 py-6 flex flex-col justify-center shrink-0">
           <div class="mb-4 w-full flex flex-col gap-3">
             <div class="w-full relative">
-                <textarea id="custom-filename" rows="3" maxlength="200" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-6 py-4 text-white text-sm font-medium focus:outline-none focus:border-blue-500 transition-colors shadow-inner resize-none" placeholder="belge ismini buraya yazınız" autocomplete="off"></textarea>
+                <textarea id="custom-filename" rows="3" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-6 py-4 text-white text-sm font-medium focus:outline-none focus:border-blue-500 transition-colors shadow-inner resize-none" placeholder="belge ismini buraya yazınız" autocomplete="off"></textarea>
             </div>
           </div>
           <div class="flex justify-center gap-4 w-full mt-2">
@@ -268,18 +268,37 @@
       const validExts = ['.pdf', '.tiff', '.tif', '.jpeg', '.jpg', '.png'];
       let current = 0;
       let total = files.length;
+      let skipped = 0;
+      let failed = 0;
+      let success = 0;
       
       for (let file of files) {
         current++;
         const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
         if (!validExts.includes(ext)) {
-          showStatus(`⚠ Skipping ${file.name} (unsupported format).`, 'text-yellow-400');
+          skipped++;
           continue;
         }
         showStatus(`⏳ Uploading ${file.name} (${current}/${total})...`, 'text-gray-400');
-        await sendFile(file);
+        const isOk = await sendFile(file);
+        if (isOk) {
+            success++;
+        } else {
+            failed++;
+        }
       }
-      showStatus(`✓ All ${total} uploads completed.`, 'text-green-400');
+      
+      if (skipped > 0 || failed > 0) {
+        let msgs = [];
+        if (success > 0) msgs.push(`${success} uploaded`);
+        if (skipped > 0) msgs.push(`${skipped} skipped (unsupported)`);
+        if (failed > 0) msgs.push(`${failed} failed`);
+        showStatus(`⚠ ${msgs.join(', ')}.`, 'text-yellow-400');
+      } else if (success > 0) {
+        showStatus(`✓ All ${success} uploads completed.`, 'text-green-400');
+      } else {
+        showStatus(`⚠ No valid files to upload.`, 'text-yellow-400');
+      }
     }
 
     async function sendFile(file) {
@@ -291,7 +310,7 @@
         if (!res.ok) {
           const err = await res.json();
           showStatus('✗ Error: ' + err.detail, 'text-red-400');
-          return;
+          return false;
         }
 
         const html = await res.text();
@@ -336,8 +355,10 @@
           scrollSensitivity: 80,
           scrollSpeed: 20
         });
+        return true;
       } catch (err) {
         showStatus('✗ Connection error.', 'text-red-400');
+        return false;
       }
     }
 
@@ -511,7 +532,7 @@
     let renamingFileId = null;
 
     function proceedToExtract() {
-      const input = document.getElementById('custom-filename').value.replace(/[\r\n]+/g, ' ').trim();
+      let input = document.getElementById('custom-filename').value.replace(/[\r\n]+/g, ' ').trim();
       currentCustomName = input || (renamingFileId ? 'renamed_file' : 'extracted'); 
       
       closeNamingModal();
@@ -544,7 +565,7 @@
     async function submitRename(fileId, newName) {
       const res = await postAction('/rename/' + fileId, { custom_name: newName });
       if (res) {
-        const link = document.querySelector(`a.download-btn[href='/download/${fileId}']`);
+        const link = document.querySelector(`.download-btn[data-file-id='${fileId}']`);
         if (link) {
           const li = link.closest('li');
           if (li) {
@@ -717,27 +738,37 @@
     }
 
     function downloadAllAsZip() {
-      const links = document.querySelectorAll('#output-list a.download-btn');
+      const links = document.querySelectorAll('#output-list .download-btn');
       if (links.length === 0) return;
-      const ids = Array.from(links).map(a => {
-        const href = a.getAttribute('href');
-        return href.substring(href.lastIndexOf('/') + 1);
-      });
+      const ids = Array.from(links).map(a => a.dataset.fileId);
       
       let url = `/download-zip?file_ids=${ids.join(',')}`;
       window.location.href = url;
     }
 
     function downloadAllNumberedAsZip() {
-      const links = document.querySelectorAll('#output-list a.download-btn');
+      const links = document.querySelectorAll('#output-list .download-btn');
       if (links.length === 0) return;
-      const ids = Array.from(links).map(a => {
-        const href = a.getAttribute('href');
-        return href.substring(href.lastIndexOf('/') + 1);
-      });
+      const ids = Array.from(links).map(a => a.dataset.fileId);
       
       let url = `/download-zip-numbered?file_ids=${ids.join(',')}`;
       window.location.href = url;
+    }
+
+    function downloadSingleFile(fileId, btn) {
+      const listItems = Array.from(document.querySelectorAll('#output-list li'));
+      const li = btn.closest('li');
+      let count = 0;
+      let index = 1;
+      for (let i = 0; i < listItems.length; i++) {
+         if (listItems[i].id === 'output-empty') continue;
+         count++;
+         if (listItems[i] === li) {
+            index = count;
+            break;
+         }
+      }
+      window.location.href = `/download/${fileId}?ek_no=${index}`;
     }
 
     let currentPreviewZoom = 1;

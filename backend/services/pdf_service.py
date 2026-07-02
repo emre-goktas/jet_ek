@@ -39,6 +39,25 @@ def is_valid_uuid(val: str) -> bool:
     """Checks if the entered value is a 32-character hex (UUID)."""
     return bool(val and len(val) == 32 and val.isalnum())
 
+import json
+
+def get_metadata(file_id: str) -> dict:
+    """Returns the metadata dict for the given file_id. Returns empty dict if not found."""
+    json_path = STORAGE_DIR / f"{file_id}.json"
+    if json_path.exists():
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_metadata(file_id: str, metadata: dict):
+    """Saves the metadata dict for the given file_id."""
+    json_path = STORAGE_DIR / f"{file_id}.json"
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(metadata, f, ensure_ascii=False)
+
 def save_upload(file_path: Path, original_name: str) -> tuple[str, int]:
     """Saves the uploaded PDF file to storage with a unique pdf_id.
 
@@ -156,10 +175,14 @@ def extract_pages(pages: list[dict], custom_name: str | None = None, file_counte
     file_id = uuid.uuid4().hex
     
     if custom_name:
+        save_metadata(file_id, {"custom_name": custom_name})
+        
         # Sanitize filename: replace newlines with spaces
         clean_name = custom_name.replace('\n', ' ').replace('\r', '').strip()
-        # Truncate by UTF-8 bytes instead of characters to safely fit ext4's 255 byte limit.
-        # 255 (max) - 37 (uuid + .pdf) = 218 bytes max. We'll use 210 for safety.
+        
+        if len(clean_name) > 150:
+            clean_name = clean_name[:150].strip()
+            
         encoded = clean_name.encode('utf-8')
         if len(encoded) > 210:
             clean_name = encoded[:210].decode('utf-8', 'ignore').strip()

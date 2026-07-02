@@ -76,10 +76,21 @@ def rename_pdf(file_id: str, req: RenameRequest, request: Request):
         metadata["custom_name"] = req.custom_name
         
         # Save metadata
-        import json
-        json_path = path.parent / f"{file_id}.json"
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(metadata, f, ensure_ascii=False)
+        pdf_service.save_metadata(file_id, metadata)
+        
+        # Rename physical file
+        clean_name = req.custom_name.replace('\n', ' ').replace('\r', '').strip()
+        if len(clean_name) > 150:
+            clean_name = clean_name[:150].strip()
+        
+        encoded = clean_name.encode('utf-8')
+        if len(encoded) > 210:
+            clean_name = encoded[:210].decode('utf-8', 'ignore').strip()
+        
+        new_filename = f"{clean_name}.pdf"
+        new_path = path.parent / f"{file_id}_{new_filename}"
+        if new_path != path:
+            path.rename(new_path)
             
         label = metadata.get("label", "PDF")
         
@@ -94,7 +105,7 @@ def rename_pdf(file_id: str, req: RenameRequest, request: Request):
         context={
             "request": request,
             "file_id": file_id,
-            "filename": req.custom_name,
+            "filename": new_filename,
             "label": label,
         },
     )

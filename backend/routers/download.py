@@ -25,18 +25,17 @@ from backend.services.docx_service import generate_docx_from_template
 
 
 @router.get("/download/{file_id}")
-def download_pdf(file_id: str):
+def download_pdf(file_id: str, ek_no: int = None):
     """Downloads the PDF file belonging to the specified file_id."""
     try:
         path = pdf_service.get_output_path(file_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found.")
 
-    try:
-        metadata = pdf_service.get_metadata(file_id)
-        filename = f"{metadata.get('custom_name', file_id)}.pdf"
-    except Exception:
-        filename = f"{file_id}.pdf"
+    filename = path.name.split("_", 1)[1] if "_" in path.name else path.name
+    
+    if ek_no is not None:
+        filename = f"{ek_no:02d}_{filename}"
 
     return FileResponse(
         path=str(path),
@@ -70,14 +69,18 @@ def download_zip(file_ids: str):
             doc.close()
             
             # Parse the filename
-            # Match digits followed by an underscore
-            m = re.match(r"^(\d+)_(.+)\.pdf$", filename, re.IGNORECASE)
-            if m:
-                ek_no = int(m.group(1))
-                mahiyet = m.group(2)
-            else:
-                mahiyet = filename.rsplit(".", 1)[0]
+            metadata = pdf_service.get_metadata(file_id)
+            if "custom_name" in metadata:
+                mahiyet = metadata["custom_name"].strip()
                 ek_no = None
+            else:
+                m = re.match(r"^(\d+)_(.+)\.pdf$", filename, re.IGNORECASE)
+                if m:
+                    ek_no = int(m.group(1))
+                    mahiyet = m.group(2)
+                else:
+                    mahiyet = filename.rsplit(".", 1)[0]
+                    ek_no = None
                 
             files_data.append({
                 "file_id": file_id,
@@ -149,13 +152,18 @@ def download_zip_numbered(file_ids: str):
             page_count = len(doc)
             doc.close()
             
-            m = re.match(r"^(\d+)_(.+)\.pdf$", filename, re.IGNORECASE)
-            if m:
-                ek_no = int(m.group(1))
-                mahiyet = m.group(2)
-            else:
-                mahiyet = filename.rsplit(".", 1)[0]
+            metadata = pdf_service.get_metadata(file_id)
+            if "custom_name" in metadata:
+                mahiyet = metadata["custom_name"].strip()
                 ek_no = None
+            else:
+                m = re.match(r"^(\d+)_(.+)\.pdf$", filename, re.IGNORECASE)
+                if m:
+                    ek_no = int(m.group(1))
+                    mahiyet = m.group(2)
+                else:
+                    mahiyet = filename.rsplit(".", 1)[0]
+                    ek_no = None
                 
             files_data.append({
                 "file_id": file_id,
