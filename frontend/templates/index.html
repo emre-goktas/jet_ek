@@ -103,9 +103,28 @@
 
       <!-- Toolbar -->
       <div id="toolbar" class="hidden bg-gray-900 border-b border-gray-800 px-5 py-2 flex items-center gap-3 shrink-0">
-        <span id="selection-info" class="text-sm text-gray-400 flex-1">
-          Click pages to select.
-        </span>
+        <div id="selection-info-container" class="flex-1 flex items-center gap-3">
+          <span id="selection-info" class="text-sm text-gray-400">
+            Click pages to select.
+          </span>
+          <div id="batch-nav-ui" class="hidden flex flex-col justify-center gap-1 border-l border-gray-700 pl-3 ml-2">
+            <div class="relative w-[576px]">
+              <input type="text" id="batch-name-input" 
+                class="w-full bg-gray-800 text-gray-200 px-3 py-3 rounded-lg text-base font-medium border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors pr-10"
+                placeholder="Batch Name"
+                onchange="renameActiveBatch(this.value)" />
+              <span id="batch-nav-status" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-mono">0/0</span>
+            </div>
+            <div class="flex items-center gap-2 justify-center">
+              <button onclick="prevBatch()" class="text-gray-400 hover:text-white p-1 bg-gray-800 hover:bg-gray-700 rounded transition-colors flex items-center justify-center border border-gray-700 w-8 h-6" title="Previous Batch (Alt + Left)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              <button onclick="nextBatch()" class="text-gray-400 hover:text-white p-1 bg-gray-800 hover:bg-gray-700 rounded transition-colors flex items-center justify-center border border-gray-700 w-8 h-6" title="Next Batch (Alt + Right)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
 
         <div class="flex items-center gap-2">
           <button
@@ -168,28 +187,7 @@
       </p>
     </div>
     
-    <!-- BATCH MODE NAVIGATION UI -->
-    <div id="batch-nav-ui" class="hidden absolute inset-0 bg-gray-900 px-6 py-4 flex items-center justify-center gap-4">
-      <button onclick="prevBatch()" class="p-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full transition-colors border border-gray-700">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
-      
-      <div class="flex-1 max-w-xl relative">
-        <input type="text" id="batch-name-input" 
-          class="w-full bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-center font-medium"
-          placeholder="Batch Name"
-          onchange="renameActiveBatch(this.value)" />
-        <div id="batch-nav-status" class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-mono">0 / 0</div>
-      </div>
-      
-      <button onclick="nextBatch()" class="p-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full transition-colors border border-gray-700">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-    </div>
+    <!-- BATCH MODE NAVIGATION UI MOVED TO TOOLBAR -->
 
     <div id="upload-status" class="text-xs text-center mt-2 text-gray-500 hidden"></div>
   </footer>
@@ -209,7 +207,7 @@
   <!-- NAMING MODAL -->
   <div id="naming-modal" class="modal-overlay" onclick="closeNamingModal()">
     <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-0 flex flex-col shadow-2xl overflow-hidden"
-      style="max-width: 40rem; width: 100%; height: 90vh;" onclick="event.stopPropagation()">
+      style="max-width: 60rem; width: 100%; height: 90vh;" onclick="event.stopPropagation()">
       
       <!-- Top: Preview (Large) -->
       <div class="w-full flex-1 bg-gray-950 p-4 flex flex-col border-b border-gray-800 overflow-hidden relative">
@@ -218,11 +216,11 @@
               <div class="flex gap-2">
                   <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onclick="zoomPreview(0.2)">+</button>
                   <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onclick="zoomPreview(-0.2)">-</button>
-                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs" onclick="resetZoom()">Reset</button>
+                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs" onclick="resetZoom(true)">Reset</button>
               </div>
           </div>
-          <div class="flex-1 overflow-auto bg-gray-900 rounded-lg border border-gray-800 relative flex items-center justify-center cursor-move" id="preview-scroll-container">
-              <img id="naming-preview-img" src="" draggable="false" class="max-w-full max-h-full object-contain drop-shadow-md transition-transform origin-center" style="transform: scale(1);">
+          <div class="flex-1 overflow-hidden bg-gray-900 rounded-lg border border-gray-800 relative flex items-start justify-center cursor-move" id="preview-scroll-container">
+              <img id="naming-preview-img" src="" draggable="false" class="w-full h-auto drop-shadow-md transition-transform origin-top" style="transform: scale(1);">
           </div>
       </div>
 
@@ -929,10 +927,22 @@
         if (currentPreviewZoom > 5) currentPreviewZoom = 5;
         applyPreviewZoom();
     }
-    function resetZoom() {
-        currentPreviewZoom = 1;
+    function resetZoom(fullView = false) {
         currentTranslateX = 0;
         currentTranslateY = 0;
+        
+        if (fullView) {
+            const container = document.getElementById('preview-scroll-container');
+            const img = document.getElementById('naming-preview-img');
+            if (container && img && img.clientHeight > 0) {
+                currentPreviewZoom = container.clientHeight / img.clientHeight;
+                if (currentPreviewZoom < 0.2) currentPreviewZoom = 0.2;
+            } else {
+                currentPreviewZoom = 0.4;
+            }
+        } else {
+            currentPreviewZoom = 1.4;
+        }
         applyPreviewZoom();
     }
     function applyPreviewZoom() {
@@ -1017,6 +1027,29 @@
                 e.preventDefault();
                 doExtract();
             }
+
+            if (e.altKey && e.key === 'ArrowLeft') {
+                const isModalOpen = document.getElementById('naming-modal')?.classList.contains('active');
+                if (isModalOpen) {
+                    e.preventDefault();
+                    previewPrevPage();
+                } else if (isBatchMode) {
+                    e.preventDefault();
+                    if (isInput) activeEl.blur(); // Trigger onchange if renaming
+                    prevBatch();
+                }
+            }
+            if (e.altKey && e.key === 'ArrowRight') {
+                const isModalOpen = document.getElementById('naming-modal')?.classList.contains('active');
+                if (isModalOpen) {
+                    e.preventDefault();
+                    previewNextPage();
+                } else if (isBatchMode) {
+                    e.preventDefault();
+                    if (isInput) activeEl.blur(); // Trigger onchange if renaming
+                    nextBatch();
+                }
+            }
         });
     });
 
@@ -1065,6 +1098,8 @@
                 showStatus('No batches to preview', 'text-yellow-400');
                 toggleBatchMode(); // revert
             }
+            // Auto focus input when entering batch mode
+            setTimeout(() => document.getElementById('batch-name-input').focus(), 50);
         } else {
             btn.classList.remove('text-white', 'bg-blue-600', 'border-blue-500');
             btn.classList.add('text-gray-400', 'bg-gray-800');
@@ -1125,6 +1160,9 @@
         listItems[index].closest('li').classList.add('bg-gray-800');
         
         fetchAndRenderBatch(fileId, filename);
+        
+        // Auto focus input when switching batches
+        setTimeout(() => document.getElementById('batch-name-input').focus(), 50);
     }
 
     async function fetchAndRenderBatch(fileId, filename) {

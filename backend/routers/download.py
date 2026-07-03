@@ -126,7 +126,7 @@ def download_zip(file_ids: str):
     return StreamingResponse(
         zip_buffer,
         media_type="application/x-zip-compressed",
-        headers={"Content-Disposition": "attachment; filename=pdf_regulator_files.zip"}
+        headers={"Content-Disposition": "attachment; filename=jetek_files.zip"}
     )
 
 
@@ -222,5 +222,5 @@ def download_zip_numbered(file_ids: str):
     return StreamingResponse(
         zip_buffer,
         media_type="application/x-zip-compressed",
-        headers={"Content-Disposition": "attachment; filename=pdf_regulator_files.zip"}
+        headers={"Content-Disposition": "attachment; filename=jetek_files.zip"}
     )
