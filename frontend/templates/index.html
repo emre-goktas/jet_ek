@@ -405,7 +405,11 @@
         if (selectedPages.has(cid)) selectedPages.delete(cid);
         else selectedPages.add(cid);
       }
-      lastClickedCardId = cid;
+      
+      if (isShift || isMeta) {
+        lastClickedCardId = cid;
+      }
+      
       updateHighlight();
       updateSelectionInfo();
     }
