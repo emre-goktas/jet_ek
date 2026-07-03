@@ -58,6 +58,7 @@ def extract_pages(req: ExtractRequest, background_tasks: BackgroundTasks, reques
             "file_id": file_id,
             "filename": filename,
             "label": label,
+            "page_count": count,
         },
     )
 

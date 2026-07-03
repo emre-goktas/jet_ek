@@ -188,17 +188,10 @@ def extract_pages(pages: list[dict], custom_name: str | None = None, file_counte
             clean_name = encoded[:210].decode('utf-8', 'ignore').strip()
         filename = f"{clean_name}.pdf"
     else:
-        # Append selected page count to filename
-        count = len(pages)
-        if count == 1:
-            label = f"page_{pages[0]['page_idx'] + 1}"
-        else:
-            label = f"{count}_pages"
-
         if has_rotation:
-            filename = f"rotated_{label}.pdf"
+            filename = f"rotated_extracted.pdf"
         else:
-            filename = f"extracted_{label}.pdf"
+            filename = f"extracted.pdf"
         
     out_path = STORAGE_DIR / f"{file_id}_{filename}"
     new_doc.save(str(out_path))
@@ -216,3 +209,30 @@ def get_output_path(file_id: str) -> Path:
     if not matches:
         raise FileNotFoundError(f"Output file not found: {file_id}")
     return matches[0]
+
+def get_pdf_info(file_id: str):
+    """Returns (path, filename, page_count) for a given file_id."""
+    if not is_valid_uuid(file_id):
+        raise ValueError(f"Invalid File ID: {file_id}")
+        
+    # Check if original upload
+    orig_path = STORAGE_DIR / f"{file_id}_src.pdf"
+    if orig_path.exists():
+        metadata = get_metadata(file_id)
+        filename = metadata.get("original_filename", f"{file_id}.pdf")
+        doc = pymupdf.open(str(orig_path))
+        count = len(doc)
+        doc.close()
+        return orig_path, filename, count
+        
+    # Check if extracted batch
+    matches = list(STORAGE_DIR.glob(f"{file_id}_*.pdf"))
+    if matches:
+        path = matches[0]
+        filename = path.name.split('_', 1)[1]
+        doc = pymupdf.open(str(path))
+        count = len(doc)
+        doc.close()
+        return path, filename, count
+        
+    raise FileNotFoundError(f"PDF not found for id: {file_id}")

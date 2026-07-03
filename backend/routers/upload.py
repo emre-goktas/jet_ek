@@ -78,3 +78,31 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         }
     })
     return response
+
+@router.get("/batch_viewer/{file_id}")
+async def get_batch_viewer(request: Request, file_id: str):
+    """Returns the viewer HTML fragment for an existing file_id (batch or original)."""
+    try:
+        _, filename, page_count = pdf_service.get_pdf_info(file_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+        
+    response = templates.TemplateResponse(
+        request=request,
+        name="partials/viewer.html",
+        context={
+            "request": request,
+            "pdf_id": file_id,
+            "page_count": page_count,
+            "filename": filename,
+        },
+    )
+    # The frontend manually handles HX-Trigger for this endpoint, 
+    # but we can send it anyway in case it's called via HTMX in the future.
+    response.headers["HX-Trigger"] = json.dumps({
+        "viewerReady": {
+            "pdfId": file_id, 
+            "pageCount": page_count
+        }
+    })
+    return response

@@ -23,7 +23,7 @@
       ↓ Download
     </button>
     <button
-      onclick="openRenameModal('{{ file_id }}', '{{ filename }}')"
+      onclick="openRenameModal('{{ file_id }}', '{{ filename }}', {{ page_count | default(1) }})"
       class="p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded transition-colors"
       title="Rename"
     >

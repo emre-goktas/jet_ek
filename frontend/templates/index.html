@@ -50,8 +50,26 @@
 
     <!-- LEFT PANEL: Generated PDFs -->
     <aside class="w-64 shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
-      <div class="px-4 py-3 border-b border-gray-800">
-        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Generated PDFs</h2>
+      <div class="px-4 py-3 border-b border-gray-800 flex gap-2">
+        <!-- Batch Mode Toggle Button -->
+        <button id="btn-batch-mode" class="flex-1 py-1.5 text-gray-400 bg-gray-800 hover:bg-gray-700 hover:text-white rounded transition-colors flex items-center justify-center border border-transparent" title="Batch Grid Düzeni" onclick="toggleBatchMode()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+        </button>
+        <!-- AI Rename Button (Dropdown) -->
+        <div class="relative flex-1 group">
+          <button class="w-full py-1.5 text-gray-400 bg-gray-800 hover:bg-gray-700 hover:text-yellow-400 rounded transition-colors flex items-center justify-center" onclick="this.nextElementSibling.classList.toggle('hidden')">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </button>
+          <div class="hidden absolute top-full left-0 mt-1 w-40 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 overflow-hidden">
+            <button class="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Jetle isimlendir</button>
+            <button class="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Detayla isimlendir</button>
+          </div>
+        </div>
       </div>
       <ul id="output-list" class="flex-1 overflow-y-auto p-3 space-y-2" hx-swap-oob="true">
         <li id="output-empty" class="text-xs text-gray-600 italic text-center mt-8">
@@ -134,7 +152,7 @@
   </main>
 
   <!-- UPLOAD AREA -->
-  <footer class="bg-gray-900 border-t border-gray-800 px-6 py-4 shrink-0">
+  <footer class="bg-gray-900 border-t border-gray-800 px-6 py-4 shrink-0 relative">
     <div id="drop-zone" class="relative border-2 border-dashed border-gray-700 rounded-xl p-5 text-center
              hover:border-blue-500 transition-colors duration-200 overflow-hidden cursor-pointer"
       ondragover="event.preventDefault(); this.classList.add('border-blue-400','bg-blue-950')"
@@ -149,8 +167,31 @@
         <span class="text-blue-400 font-semibold">Choose file (PDF, Tiff, Jpeg, Png)</span> or drag it here
       </p>
     </div>
-    <div id="upload-status" class="text-xs text-center mt-2 text-gray-500 hidden"></div>
+    
+    <!-- BATCH MODE NAVIGATION UI -->
+    <div id="batch-nav-ui" class="hidden absolute inset-0 bg-gray-900 px-6 py-4 flex items-center justify-center gap-4">
+      <button onclick="prevBatch()" class="p-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full transition-colors border border-gray-700">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      
+      <div class="flex-1 max-w-xl relative">
+        <input type="text" id="batch-name-input" 
+          class="w-full bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-center font-medium"
+          placeholder="Batch Name"
+          onchange="renameActiveBatch(this.value)" />
+        <div id="batch-nav-status" class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-mono">0 / 0</div>
+      </div>
+      
+      <button onclick="nextBatch()" class="p-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full transition-colors border border-gray-700">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
 
+    <div id="upload-status" class="text-xs text-center mt-2 text-gray-500 hidden"></div>
   </footer>
 
   <!-- PREVIEW MODAL -->
@@ -231,6 +272,13 @@
     let currentCustomName = '';
     let fileCounter = 1;
     let pendingFiles = [];
+    
+    // Batch Mode variables
+    let isBatchMode = false;
+    let originalPdfId = null;
+    let originalPageCount = 0;
+    let originalFilename = '';
+    let currentBatchIndex = -1;
 
 
     function handleDrop(e) {
@@ -553,28 +601,8 @@
 
     function doExtract() {
       if (selectedPages.size === 0) return;
-      document.getElementById('custom-filename').value = '';
-      
-      const cardsInOrder = Array.from(document.querySelectorAll('.page-card'));
-      batchPreviewItems = [];
-      for (let card of cardsInOrder) {
-        if (selectedPages.has(card.id) && !deletedPages.has(card.id)) {
-           const img = card.querySelector('.page-img');
-           if (img) {
-               batchPreviewItems.push({
-                   src: img.src,
-                   rotation: pageRotations[card.id] || 0
-               });
-           }
-        }
-      }
-      
-      if (batchPreviewItems.length === 0) return;
-      currentBatchPreviewIndex = 0;
-      updateBatchPreviewUI();
-
-      document.getElementById('naming-modal').classList.add('active');
-      document.body.classList.add('modal-open');
+      currentCustomName = ''; // Force auto-naming
+      confirmExtract(true);
     }
 
     function updateBatchPreviewUI() {
@@ -652,12 +680,15 @@
       }
     }
 
-    function openRenameModal(fileId, currentName) {
+    function openRenameModal(fileId, currentName, pageCount = 1) {
       renamingFileId = fileId;
       
-      const previewImg = document.getElementById('naming-preview-img');
-      previewImg.src = '/page/' + fileId + '/0';
-      resetZoom();
+      batchPreviewItems = [];
+      for (let i = 0; i < pageCount; i++) {
+        batchPreviewItems.push({ src: '/page/' + fileId + '/' + i, rotation: 0 });
+      }
+      currentBatchPreviewIndex = 0;
+      updateBatchPreviewUI();
       
       const m = document.getElementById('naming-modal');
       if (m) m.classList.add('active');
@@ -706,7 +737,16 @@
           </div>
         </div>
       `;
-      list.appendChild(wrapper);
+      if (isBatchMode && currentBatchIndex >= 0) {
+        const listItems = list.querySelectorAll('li:not(#output-empty)');
+        if (listItems.length > currentBatchIndex) {
+          listItems[currentBatchIndex].insertAdjacentElement('afterend', wrapper);
+        } else {
+          list.appendChild(wrapper);
+        }
+      } else {
+        list.appendChild(wrapper);
+      }
       updateBulkDownloadVisibility();
     }
 
@@ -765,9 +805,7 @@
       if (currentCustomName) {
         displayFilename = `${currentCustomName}.pdf`;
       } else {
-        const count = extractionList.length;
-        const label = count === 1 ? `page_${extractionList[0].page_idx + 1}` : `${count}_pages`;
-        displayFilename = `extracted_${label}.pdf`;
+        displayFilename = `extracted.pdf`;
       }
 
       // Generate a temp UI ID for tracking until response
@@ -992,6 +1030,140 @@
         
         updateHighlight();
         updateSelectionInfo();
+    }
+
+    // BATCH MODE LOGIC
+    function toggleBatchMode() {
+        isBatchMode = !isBatchMode;
+        const btn = document.getElementById('btn-batch-mode');
+        const uploadSection = document.getElementById('drop-zone');
+        const uploadStatus = document.getElementById('upload-status');
+        const batchNavUI = document.getElementById('batch-nav-ui');
+        
+        if (isBatchMode) {
+            btn.classList.add('text-white', 'bg-blue-600', 'border-blue-500');
+            btn.classList.remove('text-gray-400', 'bg-gray-800');
+            
+            // Backup current viewer state
+            const firstCard = document.querySelector('.page-card');
+            if (firstCard && firstCard.dataset.pdfId) {
+                // If it's a batch, we might overwrite originalPdfId. Wait, if it's already in batch mode?
+                // No, we are entering batch mode here, so the grid currently holds the original upload.
+                originalPdfId = firstCard.dataset.pdfId;
+            }
+            // For page count and filename, we assume they are handled by backend or we can just fetch original again.
+            // Actually, we can just load the first batch if any exist.
+            uploadSection.classList.add('hidden');
+            uploadStatus.classList.add('hidden');
+            batchNavUI.classList.remove('hidden');
+            
+            const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
+            if (listItems.length > 0) {
+                currentBatchIndex = 0;
+                loadBatch(currentBatchIndex);
+            } else {
+                showStatus('No batches to preview', 'text-yellow-400');
+                toggleBatchMode(); // revert
+            }
+        } else {
+            btn.classList.remove('text-white', 'bg-blue-600', 'border-blue-500');
+            btn.classList.add('text-gray-400', 'bg-gray-800');
+            
+            uploadSection.classList.remove('hidden');
+            uploadStatus.classList.remove('hidden');
+            batchNavUI.classList.add('hidden');
+            
+            currentBatchIndex = -1;
+            
+            // Restore original upload if exists
+            if (originalPdfId) {
+                // To restore the grid, we need the viewer.html endpoint for the original pdf.
+                // For now, if originalPdfId exists, we can re-fetch it from a new endpoint `GET /batch_viewer/{pdf_id}`
+                // since it's the same logic!
+                fetchAndRenderBatch(originalPdfId, 'Original Upload');
+            } else {
+                // Clear grid
+                document.getElementById('viewer').innerHTML = `
+                    <div id="upload-hint" class="flex flex-col items-center justify-center h-full gap-4 text-gray-600">
+                      <svg class="w-20 h-20" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                      <p class="text-lg">Upload a PDF below</p>
+                    </div>`;
+                document.getElementById('toolbar').classList.add('hidden');
+            }
+        }
+    }
+
+    function prevBatch() {
+        const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
+        if (listItems.length === 0) return;
+        currentBatchIndex--;
+        if (currentBatchIndex < 0) currentBatchIndex = listItems.length - 1;
+        loadBatch(currentBatchIndex);
+    }
+
+    function nextBatch() {
+        const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
+        if (listItems.length === 0) return;
+        currentBatchIndex++;
+        if (currentBatchIndex >= listItems.length) currentBatchIndex = 0;
+        loadBatch(currentBatchIndex);
+    }
+
+    function loadBatch(index) {
+        const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
+        if (index < 0 || index >= listItems.length) return;
+        
+        const fileId = listItems[index].dataset.fileId;
+        const filenameEl = listItems[index].closest('li').querySelector('p.truncate');
+        const filename = filenameEl ? filenameEl.textContent : 'Batch';
+        
+        document.getElementById('batch-nav-status').textContent = `${index + 1} / ${listItems.length}`;
+        document.getElementById('batch-name-input').value = filename.replace(/\.pdf$/i, '');
+        
+        // Highlight active batch in left panel
+        document.querySelectorAll('#output-list li').forEach(li => li.classList.remove('bg-gray-800'));
+        listItems[index].closest('li').classList.add('bg-gray-800');
+        
+        fetchAndRenderBatch(fileId, filename);
+    }
+
+    async function fetchAndRenderBatch(fileId, filename) {
+        try {
+            const res = await fetch('/batch_viewer/' + fileId);
+            if (!res.ok) throw new Error('Failed to load batch view');
+            
+            // Reusing HTMX logic by manually processing the response or just injecting HTML
+            // The endpoint should return partials/viewer.html
+            const html = await res.text();
+            
+            // Extract the HX-Trigger headers to trigger viewerReady manually
+            const pageCountMatch = html.match(/data-page-count="(\d+)"/);
+            const pdfIdMatch = html.match(/data-pdf-id="([^"]+)"/);
+            
+            const viewerContainer = document.getElementById('viewer');
+            viewerContainer.innerHTML = html; // inject into viewer container
+            
+            // Manually re-trigger viewerReady
+            if (pageCountMatch && pdfIdMatch) {
+                document.body.dispatchEvent(new CustomEvent('viewerReady', {
+                    detail: {
+                        pdfId: pdfIdMatch[1],
+                        pageCount: parseInt(pageCountMatch[1])
+                    }
+                }));
+            }
+        } catch (e) {
+            console.error(e);
+            showStatus('Error loading batch grid', 'text-red-400');
+        }
+    }
+
+    function renameActiveBatch(newName) {
+        if (!isBatchMode || currentBatchIndex < 0) return;
+        const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
+        if (listItems.length === 0) return;
+        const fileId = listItems[currentBatchIndex].dataset.fileId;
+        submitRename(fileId, newName);
     }
   </script>
 </body>
