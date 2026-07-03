@@ -388,11 +388,9 @@
 
       if (!isShift && !isMeta) {
         showPreview(card);
-        selectedPages.clear();
-        selectedPages.add(cid);
-      } else if (isShift && lastClickedCardId) {
+      } else if (isShift) {
         const cards = Array.from(document.querySelectorAll('.page-card'));
-        const idx1 = cards.findIndex(c => c.id === lastClickedCardId);
+        const idx1 = lastClickedCardId ? cards.findIndex(c => c.id === lastClickedCardId) : -1;
         const idx2 = cards.findIndex(c => c === card);
         if (idx1 !== -1 && idx2 !== -1) {
           const start = Math.min(idx1, idx2);
@@ -400,6 +398,8 @@
           for (let i = start; i <= end; i++) {
             selectedPages.add(cards[i].id);
           }
+        } else {
+          selectedPages.add(cid);
         }
       } else if (isMeta) {
         if (selectedPages.has(cid)) selectedPages.delete(cid);
