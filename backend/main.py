@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import logging
 
-from backend.routers import upload, pages, extract, download, templates as templates_router
+from backend.routers import upload, pages, extract, download, templates as templates_router, ai
 from backend.services.pdf_service import STORAGE_DIR, is_file_locked
 
 BASE_DIR = Path(__file__).parent.parent
@@ -59,6 +59,7 @@ app.include_router(pages.router)
 app.include_router(extract.router)
 app.include_router(download.router)
 app.include_router(templates_router.router)
+app.include_router(ai.router, prefix="/ai")
 
 # Jinja2 template engine
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))

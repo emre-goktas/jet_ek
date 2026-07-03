@@ -15,5 +15,5 @@ testResults/*.md
 
 tests/
 .pytest_cache/
-backend/data/*
+backend/data/
 

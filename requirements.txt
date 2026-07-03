@@ -19,3 +19,4 @@ watchfiles==1.1.1
 websockets==16.0
 docxtpl
 python-docx
+google-genai

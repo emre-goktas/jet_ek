@@ -24,6 +24,16 @@
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
   <!-- SortableJS script'ini ekle -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <style>
+    @keyframes domino-jump {
+      0% { transform: translateY(0); border-color: #1f2937; }
+      30% { transform: translateY(-6px); border-color: #3b82f6; background-color: #1f2937; }
+      100% { transform: translateY(0); border-color: #1f2937; }
+    }
+    .animate-domino {
+      animation: domino-jump 0.6s ease-out;
+    }
+  </style>
 </head>
 
 <body class="bg-gray-950 text-gray-100 h-screen flex flex-col overflow-hidden font-sans">
@@ -66,7 +76,7 @@
             </svg>
           </button>
           <div class="hidden absolute top-full left-0 mt-1 w-40 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 overflow-hidden">
-            <button class="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Jetle isimlendir</button>
+            <button class="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors" onclick="runJetRenameAll(); this.parentElement.classList.add('hidden')">Jetle isimlendir</button>
             <button class="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Detayla isimlendir</button>
           </div>
         </div>
@@ -892,10 +902,61 @@
     function downloadAllNumberedAsZip() {
       const links = document.querySelectorAll('#output-list .download-btn');
       if (links.length === 0) return;
-      const ids = Array.from(links).map(a => a.dataset.fileId);
-      
+      let ids = Array.from(document.querySelectorAll('.download-btn')).map(btn => btn.dataset.fileId);
+      if (ids.length === 0) return;
       let url = `/download-zip-numbered?file_ids=${ids.join(',')}`;
       window.location.href = url;
+    }
+
+    async function runJetRenameAll() {
+      // Find all download buttons in the list to extract the file IDs
+      const downloadBtns = Array.from(document.querySelectorAll('#output-list .download-btn'));
+      if (downloadBtns.length === 0) return;
+
+      for (let i = 0; i < downloadBtns.length; i++) {
+        const btn = downloadBtns[i];
+        const fileId = btn.dataset.fileId;
+        const li = btn.closest('li');
+        if (!li) continue;
+        
+        // Add domino animation class
+        li.classList.add('animate-domino');
+        setTimeout(() => li.classList.remove('animate-domino'), 600);
+
+        // Find the rename button (pen icon) and replace it with a spinner temporarily
+        const renameBtn = li.querySelector('button[onclick^="openRenameModal"]');
+        let originalBtnHtml = "";
+        if (renameBtn) {
+          originalBtnHtml = renameBtn.outerHTML;
+          renameBtn.outerHTML = `<button type="button" class="text-blue-400 cursor-wait focus:outline-none" disabled data-spinner-for="${fileId}">
+            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </button>`;
+        }
+
+        try {
+          const res = await fetch(`/ai/jet-rename/${fileId}`, { method: 'POST' });
+          if (res.ok) {
+            const updatedHtml = await res.text();
+            li.innerHTML = updatedHtml; // Replace the inside of the li with the new one
+          } else {
+            console.error('Failed to rename file', fileId);
+            // Restore button if failed
+            if (originalBtnHtml) {
+              const spinnerBtn = li.querySelector(`button[data-spinner-for="${fileId}"]`);
+              if (spinnerBtn) spinnerBtn.outerHTML = originalBtnHtml;
+            }
+          }
+        } catch (e) {
+          console.error('Error renaming file', fileId, e);
+          if (originalBtnHtml) {
+            const spinnerBtn = li.querySelector(`button[data-spinner-for="${fileId}"]`);
+            if (spinnerBtn) spinnerBtn.outerHTML = originalBtnHtml;
+          }
+        }
+      }
     }
 
     function downloadSingleFile(fileId, btn) {

@@ -8,3 +8,11 @@ try:
 except Exception as e:
     print("Failed:", str(e))
 os.remove(p)
+
+
+"""Error in jet_rename for e7efa98f7b224edd90c43fdd2afccad8: Failed to rename file: Files.upload() got an unexpected keyword argument 'mime_type'
+INFO:     127.0.0.1:47516 - "POST /ai/jet-rename/e7efa98f7b224edd90c43fdd2afccad8 HTTP/1.1" 400 Bad Request
+Error in jet_rename for 9f9b109bca3a4a6e893b2d535404a88d: Failed to rename file: Files.upload() got an unexpected keyword argument 'mime_type'
+INFO:     127.0.0.1:47516 - "POST /ai/jet-rename/9f9b109bca3a4a6e893b2d535404a88d HTTP/1.1" 400 Bad Request
+Error in jet_rename for 4e3e13f7095a4be3901271d781f9dec2: Failed to rename file: Files.upload() got an unexpected keyword argument 'mime_type'
+INFO:     127.0.0.1:47516 - "POST /ai/jet-rename/4e3e13f7095a4be3901271d781f9dec2 HTTP/1.1" 400 Bad Request"""
