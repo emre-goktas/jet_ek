@@ -203,6 +203,7 @@
 
   <script>
     let selectedPages = new Set();
+    let selectionHistory = []; // Track selection actions for undo
     let deletedPages = new Set();
     let lastClickedCardId = null;
     let pageRotations = {};
@@ -385,6 +386,10 @@
 
       const isShift = event.shiftKey;
       const isMeta = event.ctrlKey || event.metaKey;
+      
+      const added = [];
+      const removed = [];
+      const prevAnchor = lastClickedCardId;
 
       if (!isShift && !isMeta) {
         showPreview(card);
@@ -396,17 +401,32 @@
           const start = Math.min(idx1, idx2);
           const end = Math.max(idx1, idx2);
           for (let i = start; i <= end; i++) {
-            selectedPages.add(cards[i].id);
+            const currentId = cards[i].id;
+            if (!selectedPages.has(currentId)) {
+              selectedPages.add(currentId);
+              added.push(currentId);
+            }
           }
         } else {
-          selectedPages.add(cid);
+          if (!selectedPages.has(cid)) {
+            selectedPages.add(cid);
+            added.push(cid);
+          }
         }
       } else if (isMeta) {
-        if (selectedPages.has(cid)) selectedPages.delete(cid);
-        else selectedPages.add(cid);
+        if (selectedPages.has(cid)) {
+          selectedPages.delete(cid);
+          removed.push(cid);
+        } else {
+          selectedPages.add(cid);
+          added.push(cid);
+        }
       }
       
       if (isShift || isMeta) {
+        if (added.length > 0 || removed.length > 0) {
+          selectionHistory.push({ added, removed, prevAnchor });
+        }
         lastClickedCardId = cid;
       }
       
@@ -424,6 +444,7 @@
 
     function clearSelection() {
       selectedPages.clear();
+      selectionHistory = [];
       lastClickedCardId = null;
       updateHighlight();
       updateSelectionInfo();
@@ -866,7 +887,37 @@
                 }
             });
         }
+
+        document.addEventListener('keydown', (e) => {
+            const isCtrl = e.ctrlKey || e.metaKey;
+            const activeEl = document.activeElement;
+            const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
+
+            if (isCtrl && (e.key === 'z' || e.key === 'Z')) {
+                if (isInput) return; // Let default browser undo work inside inputs
+                e.preventDefault();
+                undoLastSelection();
+            }
+            
+            if (isCtrl && (e.key === 'x' || e.key === 'X')) {
+                if (isInput) return; // Let default browser cut work inside inputs
+                e.preventDefault();
+                doExtract();
+            }
+        });
     });
+
+    function undoLastSelection() {
+        if (selectionHistory.length === 0) return;
+        const lastAction = selectionHistory.pop();
+        
+        lastAction.added.forEach(id => selectedPages.delete(id));
+        lastAction.removed.forEach(id => selectedPages.add(id));
+        lastClickedCardId = lastAction.prevAnchor;
+        
+        updateHighlight();
+        updateSelectionInfo();
+    }
   </script>
 </body>
 
