@@ -165,7 +165,7 @@
       <!-- Top: Preview (Large) -->
       <div class="w-full flex-1 bg-gray-950 p-4 flex flex-col border-b border-gray-800 overflow-hidden relative">
           <div class="flex justify-between items-center mb-2 z-10">
-              <p class="text-xs text-gray-400 uppercase tracking-widest font-semibold">First Page Preview</p>
+              <p id="preview-modal-title" class="text-xs text-gray-400 uppercase tracking-widest font-semibold">First Page Preview</p>
               <div class="flex gap-2">
                   <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onclick="zoomPreview(0.2)">+</button>
                   <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onclick="zoomPreview(-0.2)">-</button>
@@ -180,6 +180,15 @@
       <!-- Bottom: Form -->
       <div class="w-full px-4 py-6 flex flex-col justify-center shrink-0">
           <div class="mb-4 w-full flex flex-col gap-3">
+            <div class="flex items-center justify-between px-2" id="preview-nav-container" style="display: none;">
+                <button type="button" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none" onclick="previewPrevPage()"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg></button>
+                <div class="flex items-center gap-2 text-xs text-gray-400 font-medium">
+                    <span>Page</span>
+                    <input type="number" id="preview-page-input" class="bg-gray-800 border border-gray-700 text-white rounded px-2 py-1 w-12 text-center focus:outline-none" onchange="previewGoToPage()">
+                    <span>of <span id="preview-total-pages">1</span></span>
+                </div>
+                <button type="button" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none" onclick="previewNextPage()"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path></svg></button>
+            </div>
             <div class="w-full relative">
                 <textarea id="custom-filename" rows="3" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-6 py-4 text-white text-sm font-medium focus:outline-none focus:border-blue-500 transition-colors shadow-inner resize-none" placeholder="belge ismini buraya yazınız" autocomplete="off"></textarea>
             </div>
@@ -202,6 +211,9 @@
   </div>
 
   <script>
+    let batchPreviewItems = [];
+    let currentBatchPreviewIndex = 0;
+    
     let selectedPages = new Set();
     let selectionHistory = []; // Track selection actions for undo
     let deletedPages = new Set();
@@ -535,30 +547,85 @@
       if (selectedPages.size === 0) return;
       document.getElementById('custom-filename').value = '';
       
-      // Find the first selected page image
       const cardsInOrder = Array.from(document.querySelectorAll('.page-card'));
-      let firstSelectedImgSrc = '';
-      let firstRotation = 0;
+      batchPreviewItems = [];
       for (let card of cardsInOrder) {
         if (selectedPages.has(card.id) && !deletedPages.has(card.id)) {
            const img = card.querySelector('.page-img');
            if (img) {
-               firstSelectedImgSrc = img.src;
-               firstRotation = pageRotations[card.id] || 0;
+               batchPreviewItems.push({
+                   src: img.src,
+                   rotation: pageRotations[card.id] || 0
+               });
            }
-           break;
         }
       }
       
-      const previewImg = document.getElementById('naming-preview-img');
-      if (previewImg) {
-          previewImg.src = firstSelectedImgSrc;
-          previewImg.dataset.rotation = firstRotation;
-          if (typeof resetZoom === 'function') resetZoom();
-      }
+      if (batchPreviewItems.length === 0) return;
+      currentBatchPreviewIndex = 0;
+      updateBatchPreviewUI();
 
       document.getElementById('naming-modal').classList.add('active');
       document.body.classList.add('modal-open');
+    }
+
+    function updateBatchPreviewUI() {
+        if (batchPreviewItems.length === 0) return;
+        const item = batchPreviewItems[currentBatchPreviewIndex];
+        
+        const previewImg = document.getElementById('naming-preview-img');
+        if (previewImg) {
+            previewImg.src = item.src;
+            previewImg.dataset.rotation = item.rotation;
+            if (typeof resetZoom === 'function') resetZoom();
+        }
+        
+        const titleEl = document.getElementById('preview-modal-title');
+        const navContainer = document.getElementById('preview-nav-container');
+        if (batchPreviewItems.length > 1) {
+            if (titleEl) titleEl.textContent = "Batch Preview";
+            if (navContainer) {
+                navContainer.style.display = "flex";
+                document.getElementById('preview-page-input').value = currentBatchPreviewIndex + 1;
+                document.getElementById('preview-total-pages').textContent = batchPreviewItems.length;
+            }
+        } else {
+            if (titleEl) titleEl.textContent = "First Page Preview";
+            if (navContainer) navContainer.style.display = "none";
+        }
+    }
+
+    function previewPrevPage() {
+        if (batchPreviewItems.length === 0) return;
+        currentBatchPreviewIndex--;
+        if (currentBatchPreviewIndex < 0) {
+            currentBatchPreviewIndex = batchPreviewItems.length - 1;
+        }
+        updateBatchPreviewUI();
+    }
+    
+    function previewNextPage() {
+        if (batchPreviewItems.length === 0) return;
+        currentBatchPreviewIndex++;
+        if (currentBatchPreviewIndex >= batchPreviewItems.length) {
+            currentBatchPreviewIndex = 0;
+        }
+        updateBatchPreviewUI();
+    }
+    
+    function previewGoToPage() {
+        const input = document.getElementById('preview-page-input');
+        let val = parseInt(input.value);
+        if (isNaN(val)) val = 1;
+        
+        if (val < 1) {
+            val = batchPreviewItems.length;
+        } else if (val > batchPreviewItems.length) {
+            val = 1;
+        }
+        
+        currentBatchPreviewIndex = val - 1;
+        updateBatchPreviewUI();
     }
 
     let renamingFileId = null;
