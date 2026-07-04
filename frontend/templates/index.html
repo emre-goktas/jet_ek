@@ -913,15 +913,16 @@
       const downloadBtns = Array.from(document.querySelectorAll('#output-list .download-btn'));
       if (downloadBtns.length === 0) return;
 
-      for (let i = 0; i < downloadBtns.length; i++) {
-        const btn = downloadBtns[i];
+      const promises = downloadBtns.map((btn, index) => {
         const fileId = btn.dataset.fileId;
         const li = btn.closest('li');
-        if (!li) continue;
+        if (!li) return Promise.resolve();
         
-        // Add domino animation class
-        li.classList.add('animate-domino');
-        setTimeout(() => li.classList.remove('animate-domino'), 600);
+        // Add domino animation class with a slight delay for visual effect
+        setTimeout(() => {
+          li.classList.add('animate-domino');
+          setTimeout(() => li.classList.remove('animate-domino'), 600);
+        }, index * 100);
 
         // Find the rename button (pen icon) and replace it with a spinner temporarily
         const renameBtn = li.querySelector('button[onclick^="openRenameModal"]');
@@ -936,29 +937,32 @@
           </button>`;
         }
 
-        try {
-          const res = await fetch(`/ai/jet-rename/${fileId}`, { method: 'POST' });
-          if (res.ok) {
-            const updatedHtml = await res.text();
-            li.innerHTML = updatedHtml; // Replace the inside of the li with the new one
-          } else {
-            console.error('Failed to rename file', fileId);
+        return fetch(`/ai/jet-rename/${fileId}`, { method: 'POST' })
+          .then(async (res) => {
+            if (res.ok) {
+              const updatedHtml = await res.text();
+              li.innerHTML = updatedHtml; // Replace the inside of the li with the new one
+            } else {
+              console.error('Failed to rename file', fileId);
+              alert('Failed to rename file...');
+              // Restore button if failed
+              if (originalBtnHtml) {
+                const spinnerBtn = li.querySelector(`button[data-spinner-for="${fileId}"]`);
+                if (spinnerBtn) spinnerBtn.outerHTML = originalBtnHtml;
+              }
+            }
+          })
+          .catch((e) => {
+            console.error('Error renaming file', fileId, e);
             alert('Failed to rename file...');
-            // Restore button if failed
             if (originalBtnHtml) {
               const spinnerBtn = li.querySelector(`button[data-spinner-for="${fileId}"]`);
               if (spinnerBtn) spinnerBtn.outerHTML = originalBtnHtml;
             }
-          }
-        } catch (e) {
-          console.error('Error renaming file', fileId, e);
-          alert('Failed to rename file...');
-          if (originalBtnHtml) {
-            const spinnerBtn = li.querySelector(`button[data-spinner-for="${fileId}"]`);
-            if (spinnerBtn) spinnerBtn.outerHTML = originalBtnHtml;
-          }
-        }
-      }
+          });
+      });
+
+      await Promise.all(promises);
     }
 
     function downloadSingleFile(fileId, btn) {

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent.parent / "frontend" / "templates"))
 
 @router.post("/jet-rename/{file_id}", response_class=HTMLResponse)
-async def jet_rename(file_id: str, request: Request):
+def jet_rename(file_id: str, request: Request):
     """
     Renames the given PDF file_id using Gemini AI based on its first page.
     Returns the updated HTML for the left panel item.
