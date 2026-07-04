@@ -204,13 +204,8 @@
 
   <!-- PREVIEW MODAL -->
   <div id="preview-modal" class="modal-overlay" onclick="closePreview()">
-    <div class="modal-content" onclick="event.stopPropagation()">
-      <button class="modal-close" onclick="closePreview()">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-      <img id="preview-img" src="" alt="Preview">
+    <div class="modal-content relative group cursor-pointer" onclick="closePreview()">
+      <img id="preview-img" src="" alt="Preview" class="transition-transform duration-300">
     </div>
   </div>
 
@@ -224,9 +219,9 @@
           <div class="flex justify-between items-center mb-2 z-10">
               <p id="preview-modal-title" class="text-xs text-gray-400 uppercase tracking-widest font-semibold">First Page Preview</p>
               <div class="flex gap-2">
-                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onclick="zoomPreview(0.2)">+</button>
-                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onclick="zoomPreview(-0.2)">-</button>
-                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs" onclick="resetZoom(true)">Reset</button>
+                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onmousedown="event.preventDefault();" onclick="zoomPreview(0.2)">+</button>
+                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onmousedown="event.preventDefault();" onclick="zoomPreview(-0.2)">-</button>
+                  <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs" onmousedown="event.preventDefault();" onclick="resetZoom(true)">Reset</button>
               </div>
           </div>
           <div class="flex-1 overflow-hidden bg-gray-900 rounded-lg border border-gray-800 relative flex items-start justify-center cursor-move" id="preview-scroll-container">
@@ -238,13 +233,13 @@
       <div class="w-full px-4 py-6 flex flex-col justify-center shrink-0">
           <div class="mb-4 w-full flex flex-col gap-3">
             <div class="flex items-center justify-between px-2" id="preview-nav-container" style="display: none;">
-                <button type="button" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none" onclick="previewPrevPage()"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg></button>
+                <button type="button" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none" onmousedown="event.preventDefault();" onclick="previewPrevPage()"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg></button>
                 <div class="flex items-center gap-2 text-xs text-gray-400 font-medium">
                     <span>Page</span>
                     <input type="number" id="preview-page-input" class="bg-gray-800 border border-gray-700 text-white rounded px-2 py-1 w-12 text-center focus:outline-none" onchange="previewGoToPage()">
                     <span>of <span id="preview-total-pages">1</span></span>
                 </div>
-                <button type="button" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none" onclick="previewNextPage()"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path></svg></button>
+                <button type="button" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none" onmousedown="event.preventDefault();" onclick="previewNextPage()"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path></svg></button>
             </div>
             <div class="w-full relative">
                 <textarea id="custom-filename" rows="3" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-6 py-4 text-white text-sm font-medium focus:outline-none focus:border-blue-500 transition-colors shadow-inner resize-none" placeholder="belge ismini buraya yazınız" autocomplete="off"></textarea>
@@ -1064,6 +1059,12 @@
 
             container.addEventListener('mousedown', (e) => {
                 if (e.button !== 0) return; // Only left click
+                e.preventDefault(); // Prevent browser from shifting focus
+                
+                // Explicitly keep/set focus on the filename input
+                const filenameInput = document.getElementById('custom-filename');
+                if (filenameInput) filenameInput.focus();
+
                 isDraggingPreview = true;
                 dragStartX = e.clientX;
                 dragStartY = e.clientY;
@@ -1100,6 +1101,22 @@
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     proceedToExtract(); // Submit when hitting enter
+                }
+            });
+        }
+
+        const viewerArea = document.getElementById('viewer');
+        if (viewerArea) {
+            viewerArea.addEventListener('mousedown', (e) => {
+                // Check if click is on the scrollbar
+                const isScrollbar = e.offsetX > e.target.clientWidth || e.offsetY > e.target.clientHeight;
+                if (!isScrollbar) {
+                    const inp = document.getElementById('batch-name-input');
+                    // Avoid preventing default on inputs to allow normal text selection
+                    if (inp && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                        e.preventDefault();
+                        inp.focus();
+                    }
                 }
             });
         }
