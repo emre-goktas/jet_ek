@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 import logging
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
-from backend.services.ai_service import jet_rename_pdf
+from backend.services.ai_service import jet_rename_pdf, jet_rename_pdf_batch
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -30,4 +31,33 @@ def jet_rename(file_id: str, request: Request):
     except Exception as e:
         logger.error(f"Error in jet_rename for {file_id}: {e}")
         # Return a 400 error so frontend can handle it
+        raise HTTPException(status_code=400, detail=str(e))
+
+class BatchRenameRequest(BaseModel):
+    file_ids: list[str]
+
+@router.post("/jet-rename-batch", response_class=JSONResponse)
+def jet_rename_batch(data: BatchRenameRequest, request: Request):
+    """
+    Renames multiple PDF files using Gemini AI in a single batch.
+    Returns a JSON mapping of file_id -> rendered HTML snippet.
+    """
+    try:
+        results = jet_rename_pdf_batch(data.file_ids)
+        response_htmls = {}
+        for file_id, info in results.items():
+            context = {
+                "request": request,
+                "file_id": file_id,
+                "filename": info["filename"],
+                "label": info["label"],
+                "page_count": info["page_count"],
+            }
+            # Render template to string using Starlette's TemplateResponse body
+            template_response = templates.TemplateResponse(request=request, name="partials/pdf_item.html", context=context)
+            response_htmls[file_id] = template_response.body.decode('utf-8')
+            
+        return JSONResponse(content=response_htmls)
+    except Exception as e:
+        logger.error(f"Error in jet_rename_batch: {e}")
         raise HTTPException(status_code=400, detail=str(e))

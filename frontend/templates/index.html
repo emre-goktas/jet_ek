@@ -913,11 +913,18 @@
       const downloadBtns = Array.from(document.querySelectorAll('#output-list .download-btn'));
       if (downloadBtns.length === 0) return;
 
-      const promises = downloadBtns.map((btn, index) => {
+      const fileIds = [];
+      const originalBtns = {};
+      const listItems = {};
+
+      downloadBtns.forEach((btn, index) => {
         const fileId = btn.dataset.fileId;
         const li = btn.closest('li');
-        if (!li) return Promise.resolve();
+        if (!li) return;
         
+        fileIds.push(fileId);
+        listItems[fileId] = li;
+
         // Add domino animation class with a slight delay for visual effect
         setTimeout(() => {
           li.classList.add('animate-domino');
@@ -926,9 +933,8 @@
 
         // Find the rename button (pen icon) and replace it with a spinner temporarily
         const renameBtn = li.querySelector('button[onclick^="openRenameModal"]');
-        let originalBtnHtml = "";
         if (renameBtn) {
-          originalBtnHtml = renameBtn.outerHTML;
+          originalBtns[fileId] = renameBtn.outerHTML;
           renameBtn.outerHTML = `<button type="button" class="text-blue-400 cursor-wait focus:outline-none" disabled data-spinner-for="${fileId}">
             <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -936,33 +942,53 @@
             </svg>
           </button>`;
         }
-
-        return fetch(`/ai/jet-rename/${fileId}`, { method: 'POST' })
-          .then(async (res) => {
-            if (res.ok) {
-              const updatedHtml = await res.text();
-              li.innerHTML = updatedHtml; // Replace the inside of the li with the new one
-            } else {
-              console.error('Failed to rename file', fileId);
-              alert('Failed to rename file...');
-              // Restore button if failed
-              if (originalBtnHtml) {
-                const spinnerBtn = li.querySelector(`button[data-spinner-for="${fileId}"]`);
-                if (spinnerBtn) spinnerBtn.outerHTML = originalBtnHtml;
-              }
-            }
-          })
-          .catch((e) => {
-            console.error('Error renaming file', fileId, e);
-            alert('Failed to rename file...');
-            if (originalBtnHtml) {
-              const spinnerBtn = li.querySelector(`button[data-spinner-for="${fileId}"]`);
-              if (spinnerBtn) spinnerBtn.outerHTML = originalBtnHtml;
-            }
-          });
       });
 
-      await Promise.all(promises);
+      if (fileIds.length === 0) return;
+
+      try {
+        const res = await fetch(`/ai/jet-rename-batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_ids: fileIds })
+        });
+        
+        if (res.ok) {
+          const results = await res.json();
+          // Update all successfully renamed files
+          for (const [fileId, htmlSnippet] of Object.entries(results)) {
+             if (listItems[fileId]) {
+               listItems[fileId].innerHTML = htmlSnippet;
+             }
+          }
+          // Restore buttons for files that failed or were missing from the AI response
+          for (const fileId of fileIds) {
+             if (!results[fileId] && originalBtns[fileId] && listItems[fileId]) {
+                const spinnerBtn = listItems[fileId].querySelector(`button[data-spinner-for="${fileId}"]`);
+                if (spinnerBtn) spinnerBtn.outerHTML = originalBtns[fileId];
+             }
+          }
+        } else {
+          console.error('Failed to batch rename files');
+          alert('Toplu isimlendirme sırasında hata oluştu.');
+          // Restore all buttons
+          for (const fileId of fileIds) {
+             if (originalBtns[fileId] && listItems[fileId]) {
+                const spinnerBtn = listItems[fileId].querySelector(`button[data-spinner-for="${fileId}"]`);
+                if (spinnerBtn) spinnerBtn.outerHTML = originalBtns[fileId];
+             }
+          }
+        }
+      } catch (e) {
+        console.error('Error during batch rename', e);
+        alert('Toplu isimlendirme sırasında hata oluştu.');
+        for (const fileId of fileIds) {
+           if (originalBtns[fileId] && listItems[fileId]) {
+              const spinnerBtn = listItems[fileId].querySelector(`button[data-spinner-for="${fileId}"]`);
+              if (spinnerBtn) spinnerBtn.outerHTML = originalBtns[fileId];
+           }
+        }
+      }
     }
 
     function downloadSingleFile(fileId, btn) {
