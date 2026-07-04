@@ -27,6 +27,7 @@ def get_client():
 
 def log_ai_rename(file_id: str, original_name: str, new_name: str):
     """Appends the AI renaming result to a JSON log file."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     logs = []
     if LOG_FILE_PATH.exists():
         try:
@@ -46,6 +47,7 @@ def log_ai_rename(file_id: str, original_name: str, new_name: str):
 
 def log_ai_error(file_id: str, error_msg: str):
     """Appends an AI error to a JSON log file."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     logs = []
     if LOG_FILE_PATH.exists():
         try:
@@ -85,7 +87,7 @@ def jet_rename_pdf(file_id: str) -> str:
             src_doc.close()
             
             # 3. Upload the temporary PDF to Gemini
-            gemini_file = client.files.upload(file=temp_pdf_path, mime_type="application/pdf")
+            gemini_file = client.files.upload(file=temp_pdf_path, config={"mime_type": "application/pdf"})
             
             # 4. Generate content
             prompt = (
@@ -100,7 +102,7 @@ def jet_rename_pdf(file_id: str) -> str:
             )
             
             response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model='gemini-3.5-flash',
                 contents=[gemini_file, prompt]
             )
             

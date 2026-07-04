@@ -943,6 +943,7 @@
             li.innerHTML = updatedHtml; // Replace the inside of the li with the new one
           } else {
             console.error('Failed to rename file', fileId);
+            alert('Failed to rename file...');
             // Restore button if failed
             if (originalBtnHtml) {
               const spinnerBtn = li.querySelector(`button[data-spinner-for="${fileId}"]`);
@@ -951,6 +952,7 @@
           }
         } catch (e) {
           console.error('Error renaming file', fileId, e);
+          alert('Failed to rename file...');
           if (originalBtnHtml) {
             const spinnerBtn = li.querySelector(`button[data-spinner-for="${fileId}"]`);
             if (spinnerBtn) spinnerBtn.outerHTML = originalBtnHtml;

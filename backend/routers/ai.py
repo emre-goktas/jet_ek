@@ -26,7 +26,7 @@ async def jet_rename(file_id: str, request: Request):
             "label": label,
             "page_count": page_count,
         }
-        return templates.TemplateResponse("partials/pdf_item.html", context)
+        return templates.TemplateResponse(request=request, name="partials/pdf_item.html", context=context)
     except Exception as e:
         logger.error(f"Error in jet_rename for {file_id}: {e}")
         # Return a 400 error so frontend can handle it
