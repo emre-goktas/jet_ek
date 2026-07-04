@@ -94,15 +94,15 @@ def jet_rename_pdf(file_id: str) -> str:
                 "Bu belge resmi bir kurum evrakı, bir şirkete ait doküman veya şahsi bir belgedir. "
                 "Lütfen belgeyi incele ve aşağıdaki kurallara göre çok kısa ve öz bir dosya adı üret:\n"
                 "1. Eğer belgede Kurum Adı, Tarih, Sayı ve Konu gibi bilgiler netse: "
-                "'[Kurum Adı] [Tarih] tarihli [Sayı] sayılı [Konu] yazısı' formatında oluştur.\n"
-                "2. Eğer resmi bilgiler yoksa belgenin ana başlığını tespit et. Belge bir "
-                "kişiye veya firmaya aitse: '[Kişi/Firma Adı] [Belge Başlığı/Türü]' formatında belirt.\n"
+                "'[Kurum Adı] nın,nün(gibi sonekler) [Tarih] tarihli [Sayı] sayılı [Konu] konulu yazısı' formatında oluştur.\n"
+                "2. Eğer resmi bilgiler yoksa belgenin ana başlığını ve varsa altındaki imzanın kime ait olduğunu tespit et. Belge bir "
+                "kişiye veya firmaya aitse: '[Kişi/Firma/Unvan Adı] [Belge Başlığı/Türü]' formatında belirt.\n"
                 "DİKKAT: SADECE oluşturduğun dosya adını döndür. Hiçbir açıklama yapma ve "
                 ".pdf uzantısı ekleme. (Örn: 'SGK 12.05.2023 Tarihli 1234 Sayılı İşe Giriş Bildirgesi' veya 'Ahmet Yılmaz İfade Tutanağı')."
             )
             
             response = client.models.generate_content(
-                model='gemini-3.5-flash',
+                model='gemini-2.5-flash',
                 contents=[gemini_file, prompt]
             )
             
