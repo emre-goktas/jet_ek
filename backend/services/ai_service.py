@@ -4,6 +4,9 @@ import pymupdf
 import tempfile
 from pathlib import Path
 from google import genai
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from backend.services.pdf_service import get_pdf_info, get_output_path, get_metadata, save_metadata, STORAGE_DIR
 
@@ -16,12 +19,14 @@ _client = None
 def get_client():
     global _client
     if _client is None:
-        if not API_KEY_PATH.exists():
-            raise FileNotFoundError("Gemini API key file not found at backend/data/gemini_api_key")
-        with open(API_KEY_PATH, "r", encoding="utf-8") as f:
-            api_key = f.read().strip()
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key and API_KEY_PATH.exists():
+            with open(API_KEY_PATH, "r", encoding="utf-8") as f:
+                api_key = f.read().strip()
+        
         if not api_key:
-            raise ValueError("Gemini API key is empty")
+            raise ValueError("Gemini API key is missing. Please set GEMINI_API_KEY in .env file.")
+            
         _client = genai.Client(api_key=api_key)
     return _client
 

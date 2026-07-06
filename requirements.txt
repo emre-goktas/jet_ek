@@ -20,3 +20,4 @@ websockets==16.0
 docxtpl
 python-docx
 google-genai
+python-dotenv
