@@ -5,41 +5,74 @@ PDF processing service — using PyMuPDF (pymupdf):
 - Extract page range
 - Rotate page
 """
+import os
+import re
 import uuid
 import io
+import json
 import asyncio
+import threading
 from pathlib import Path
 from typing import Literal
 
 # pyrefly: ignore [missing-import]
 import pymupdf  # PyMuPDF
-from functools import lru_cache
 import contextlib
 import logging
 
-ACTIVE_FILE_LOCKS = set()
+from backend.services import security
+
+_LOCK_COUNTS: dict[str, int] = {}
+_LOCK_COUNTS_GUARD = threading.Lock()
 
 @contextlib.contextmanager
 def lock_file(filepath: Path):
+    """Marks filepath as in-use for the duration of the block. Reference-counted so
+    overlapping uses of the same path (e.g. a render and an extract touching the
+    same source PDF) don't let one exit prematurely unmark it as free while the
+    other is still using it."""
     filepath_str = str(filepath.resolve())
-    ACTIVE_FILE_LOCKS.add(filepath_str)
+    with _LOCK_COUNTS_GUARD:
+        _LOCK_COUNTS[filepath_str] = _LOCK_COUNTS.get(filepath_str, 0) + 1
     try:
         yield
     finally:
-        ACTIVE_FILE_LOCKS.discard(filepath_str)
+        with _LOCK_COUNTS_GUARD:
+            count = _LOCK_COUNTS.get(filepath_str, 0) - 1
+            if count <= 0:
+                _LOCK_COUNTS.pop(filepath_str, None)
+            else:
+                _LOCK_COUNTS[filepath_str] = count
 
 def is_file_locked(filepath: Path) -> bool:
-    return str(filepath.resolve()) in ACTIVE_FILE_LOCKS
+    return str(filepath.resolve()) in _LOCK_COUNTS
 
 # Temporary file directory
 STORAGE_DIR = Path(__file__).parent.parent / "storage"
 STORAGE_DIR.mkdir(exist_ok=True)
 
+_HEX32_RE = re.compile(r"[0-9a-f]{32}")
+
 def is_valid_uuid(val: str) -> bool:
     """Checks if the entered value is a 32-character hex (UUID)."""
-    return bool(val and len(val) == 32 and val.isalnum())
+    return bool(val and _HEX32_RE.fullmatch(val))
 
-import json
+_PATH_CACHE: dict[str, Path] = {}
+
+def _resolve_path(id_: str) -> Path:
+    """Resolves the on-disk path for a given id (source or output PDF), using an
+    in-memory cache to avoid re-scanning STORAGE_DIR on every lookup."""
+    cached = _PATH_CACHE.get(id_)
+    if cached is not None and cached.exists():
+        return cached
+
+    matches = list(STORAGE_DIR.glob(f"{id_}_*.pdf"))
+    if not matches:
+        raise FileNotFoundError(id_)
+    path = matches[0]
+    _PATH_CACHE[id_] = path
+    return path
+
 
 def get_metadata(file_id: str) -> dict:
     """Returns the metadata dict for the given file_id. Returns empty dict if not found."""
@@ -67,9 +100,10 @@ def save_upload(file_path: Path, original_name: str) -> tuple[str, int]:
     import shutil
     pdf_id = uuid.uuid4().hex
     dest = STORAGE_DIR / f"{pdf_id}_src.pdf"
-    
+
     STORAGE_DIR.mkdir(exist_ok=True)
     shutil.move(str(file_path), str(dest))
+    _PATH_CACHE[pdf_id] = dest
 
     # Get page count
     with lock_file(dest):
@@ -80,18 +114,15 @@ def save_upload(file_path: Path, original_name: str) -> tuple[str, int]:
     return pdf_id, page_count
 
 
-
-
-
 def _src_path(pdf_id: str) -> Path:
     """Returns the path of the source PDF file."""
     if not is_valid_uuid(pdf_id):
         raise ValueError(f"Invalid PDF ID: {pdf_id}")
-        
-    matches = list(STORAGE_DIR.glob(f"{pdf_id}_*.pdf"))
-    if not matches:
+
+    try:
+        return _resolve_path(pdf_id)
+    except FileNotFoundError:
         raise FileNotFoundError(f"PDF not found: {pdf_id}")
-    return matches[0]
 
 
 def render_page(pdf_id: str, page_num: int, dpi: int = 120) -> Path:
@@ -106,11 +137,11 @@ def render_page(pdf_id: str, page_num: int, dpi: int = 120) -> Path:
     Returns:
         Path object of the created or existing PNG file
     """
-    path = _src_path(pdf_id)
     out_path = STORAGE_DIR / f"{pdf_id}_page_{page_num}_{dpi}.png"
-
     if out_path.exists():
         return out_path
+
+    path = _src_path(pdf_id)
 
     with lock_file(path):
         doc = pymupdf.open(str(path))
@@ -119,7 +150,7 @@ def render_page(pdf_id: str, page_num: int, dpi: int = 120) -> Path:
             mat = pymupdf.Matrix(dpi / 72, dpi / 72)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             png_bytes = pix.tobytes("png")
-            
+
             with open(out_path, "wb") as f:
                 f.write(png_bytes)
         finally:
@@ -128,17 +159,16 @@ def render_page(pdf_id: str, page_num: int, dpi: int = 120) -> Path:
     return out_path
 
 
-def extract_pages(pages: list[dict], custom_name: str | None = None, file_counter: int | None = None) -> tuple[str, str]:
+def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[str, str, int]:
     """Extracts the specified list of pages from potentially multiple PDFs
     and rotates them according to the specified angles.
 
     Args:
         pages: List of dicts e.g. [{"pdf_id": "id", "page_idx": 0, "rotation": 90}]
         custom_name: Optional custom filename prefix.
-        file_counter: Explicit counter sent from frontend session.
 
     Returns:
-        (file_id, filename)
+        (file_id, filename, actual_page_count)
     """
     if not pages:
         raise ValueError("No valid pages selected.")
@@ -148,22 +178,22 @@ def extract_pages(pages: list[dict], custom_name: str | None = None, file_counte
 
     new_doc = pymupdf.open()
     has_rotation = False
-    
+
     from contextlib import ExitStack
     open_docs = {}
-    
+
     with ExitStack() as stack:
         for p in pages:
             pid = p.get("pdf_id")
             idx = p.get("page_idx")
             rot = p.get("rotation", 0)
-            
+
             if pid not in open_docs:
                 src_path = _src_path(pid)
                 stack.enter_context(lock_file(src_path))
                 src_doc = stack.enter_context(pymupdf.open(str(src_path)))
                 open_docs[pid] = src_doc
-                
+
             src_doc = open_docs[pid]
             if 0 <= idx < len(src_doc):
                 new_doc.insert_pdf(src_doc, from_page=idx, to_page=idx)
@@ -171,68 +201,108 @@ def extract_pages(pages: list[dict], custom_name: str | None = None, file_counte
                     page = new_doc[-1]
                     page.set_rotation((page.rotation + rot) % 360)
                     has_rotation = True
+            else:
+                logging.warning(f"extract_pages: skipping out-of-range page_idx={idx} for pdf_id={pid}")
 
+    actual_count = len(new_doc)
     file_id = uuid.uuid4().hex
-    
+
     if custom_name:
         save_metadata(file_id, {"custom_name": custom_name})
-        
-        # Sanitize filename: replace newlines with spaces
-        clean_name = custom_name.replace('\n', ' ').replace('\r', '').strip()
-        
-        if len(clean_name) > 150:
-            clean_name = clean_name[:150].strip()
-            
-        encoded = clean_name.encode('utf-8')
-        if len(encoded) > 210:
-            clean_name = encoded[:210].decode('utf-8', 'ignore').strip()
+        clean_name = security.sanitize_filename(custom_name)
         filename = f"{clean_name}.pdf"
     else:
         if has_rotation:
             filename = f"rotated_extracted.pdf"
         else:
             filename = f"extracted.pdf"
-        
+
     out_path = STORAGE_DIR / f"{file_id}_{filename}"
     new_doc.save(str(out_path))
     new_doc.close()
+    _PATH_CACHE[file_id] = out_path
 
-    return file_id, filename
+    return file_id, filename, actual_count
 
 
 def get_output_path(file_id: str) -> Path:
     """Returns the output PDF file path according to file_id."""
     if not is_valid_uuid(file_id):
         raise ValueError(f"Invalid File ID: {file_id}")
-        
-    matches = list(STORAGE_DIR.glob(f"{file_id}_*.pdf"))
-    if not matches:
+
+    try:
+        return _resolve_path(file_id)
+    except FileNotFoundError:
         raise FileNotFoundError(f"Output file not found: {file_id}")
-    return matches[0]
 
 def get_pdf_info(file_id: str):
     """Returns (path, filename, page_count) for a given file_id."""
     if not is_valid_uuid(file_id):
         raise ValueError(f"Invalid File ID: {file_id}")
-        
+
     # Check if original upload
     orig_path = STORAGE_DIR / f"{file_id}_src.pdf"
     if orig_path.exists():
+        _PATH_CACHE[file_id] = orig_path
         metadata = get_metadata(file_id)
         filename = metadata.get("original_filename", f"{file_id}.pdf")
         doc = pymupdf.open(str(orig_path))
         count = len(doc)
         doc.close()
         return orig_path, filename, count
-        
+
     # Check if extracted batch
-    matches = list(STORAGE_DIR.glob(f"{file_id}_*.pdf"))
-    if matches:
-        path = matches[0]
-        filename = path.name.split('_', 1)[1]
-        doc = pymupdf.open(str(path))
-        count = len(doc)
-        doc.close()
-        return path, filename, count
-        
-    raise FileNotFoundError(f"PDF not found for id: {file_id}")
+    try:
+        path = _resolve_path(file_id)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"PDF not found for id: {file_id}")
+
+    filename = path.name.split('_', 1)[1]
+    doc = pymupdf.open(str(path))
+    count = len(doc)
+    doc.close()
+    return path, filename, count
+
+
+def rename_output(file_id: str, new_display_name: str) -> tuple[Path, str, dict]:
+    """Renames the output file for file_id to a sanitized version of new_display_name,
+    persists the display name in metadata, and updates the path cache.
+
+    Returns:
+        (new_path, new_filename, metadata)
+    """
+    path = get_output_path(file_id)
+    metadata = get_metadata(file_id)
+    metadata["custom_name"] = new_display_name
+    save_metadata(file_id, metadata)
+
+    clean_name = security.sanitize_filename(new_display_name)
+    new_filename = f"{clean_name}.pdf"
+    new_path = path.parent / f"{file_id}_{new_filename}"
+
+    if new_path != path:
+        with lock_file(path), lock_file(new_path):
+            path.rename(new_path)
+        _PATH_CACHE[file_id] = new_path
+    else:
+        _PATH_CACHE[file_id] = path
+
+    return new_path, new_filename, metadata
+
+
+def secure_delete(path: Path) -> None:
+    """Best-effort secure deletion: overwrites the file's bytes before unlinking.
+    Not a guarantee on copy-on-write filesystems/SSDs with wear-leveling, but a
+    meaningful improvement over a bare unlink for sensitive documents.
+    """
+    try:
+        size = path.stat().st_size
+        with open(path, "r+b") as f:
+            f.write(os.urandom(size))
+            f.flush()
+            os.fsync(f.fileno())
+    except FileNotFoundError:
+        return
+    except Exception as e:
+        logging.warning(f"Secure overwrite failed for {path}, deleting without shredding: {e}")
+    path.unlink(missing_ok=True)

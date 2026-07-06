@@ -3,9 +3,12 @@ Page render endpoint — GET /page/{pdf_id}/{page_number}
 Returns page image as PNG.
 """
 import asyncio
+import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from backend.services import pdf_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -25,6 +28,7 @@ async def get_page_image(pdf_id: str, page_number: int):
         except IndexError:
             raise HTTPException(status_code=404, detail="Page not found.")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Page render error: {e}")
+            logger.exception(f"Page render error for pdf_id={pdf_id} page={page_number}")
+            raise HTTPException(status_code=500, detail="Page render error.")
 
     return FileResponse(path=str(png_path), media_type="image/png")

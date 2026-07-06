@@ -1,21 +1,19 @@
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, File, UploadFile, HTTPException, Request, Form, BackgroundTasks
-# pyrefly: ignore [missing-import]
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, File, UploadFile, HTTPException, Request
 # pyrefly: ignore [missing-import]
 from fastapi.responses import HTMLResponse
 from pathlib import Path
 import json
-import uuid
 import os
 import tempfile
+import logging
 
 from backend.services import pdf_service
+from backend.templating import templates
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
-templates = Jinja2Templates(
-    directory=str(Path(__file__).parent.parent.parent / "frontend" / "templates")
-)
 
 
 @router.post("/upload")
@@ -46,14 +44,15 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PDF could not be saved: {e}")
+        logger.exception("Upload failed")
+        raise HTTPException(status_code=500, detail="PDF could not be saved.")
     finally:
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except Exception:
                 pass
-        
+
         if temp_pdf_path and temp_pdf_path != temp_path and os.path.exists(temp_pdf_path):
             try:
                 os.remove(temp_pdf_path)
@@ -73,7 +72,7 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
     # Trigger viewerReady event for HTMX
     response.headers["HX-Trigger"] = json.dumps({
         "viewerReady": {
-            "pdfId": pdf_id, 
+            "pdfId": pdf_id,
             "pageCount": page_count
         }
     })
@@ -85,8 +84,8 @@ async def get_batch_viewer(request: Request, file_id: str):
     try:
         _, filename, page_count = pdf_service.get_pdf_info(file_id)
     except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
-        
+        raise HTTPException(status_code=404, detail="File not found.")
+
     response = templates.TemplateResponse(
         request=request,
         name="partials/viewer.html",
@@ -97,11 +96,11 @@ async def get_batch_viewer(request: Request, file_id: str):
             "filename": filename,
         },
     )
-    # The frontend manually handles HX-Trigger for this endpoint, 
+    # The frontend manually handles HX-Trigger for this endpoint,
     # but we can send it anyway in case it's called via HTMX in the future.
     response.headers["HX-Trigger"] = json.dumps({
         "viewerReady": {
-            "pdfId": file_id, 
+            "pdfId": file_id,
             "pageCount": page_count
         }
     })

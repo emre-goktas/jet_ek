@@ -18,3 +18,5 @@ tests/
 backend/data/
 
 reports/*
+
+CLAUDE.md

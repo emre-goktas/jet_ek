@@ -21,3 +21,4 @@ docxtpl
 python-docx
 google-genai
 python-dotenv
+slowapi==0.1.10
