@@ -24,7 +24,9 @@
     </button>
     <button
       onclick="openRenameModal('{{ file_id }}', '{{ filename }}', {{ page_count | default(1) }})"
-      class="p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+      class="rename-btn p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+      data-file-id="{{ file_id }}"
+      data-page-count="{{ page_count | default(1) }}"
       title="Rename"
     >
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

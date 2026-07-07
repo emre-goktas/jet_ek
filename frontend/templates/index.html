@@ -233,13 +233,16 @@
       <div class="w-full px-4 py-6 flex flex-col justify-center shrink-0">
           <div class="mb-4 w-full flex flex-col gap-3">
             <div class="flex items-center justify-between px-2" id="preview-nav-container" style="display: none;">
-                <button type="button" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none" onmousedown="event.preventDefault();" onclick="previewPrevPage()"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg></button>
-                <div class="flex items-center gap-2 text-xs text-gray-400 font-medium">
-                    <span>Page</span>
-                    <input type="number" id="preview-page-input" class="bg-gray-800 border border-gray-700 text-white rounded px-2 py-1 w-12 text-center focus:outline-none" onchange="previewGoToPage()">
-                    <span>of <span id="preview-total-pages">1</span></span>
+                <button type="button" id="preview-batch-prev-btn" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none disabled:hover:text-gray-400" onmousedown="event.preventDefault();" onclick="previewPrevBatch()" title="Previous Batch (Alt + Up)"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg></button>
+                <div class="flex flex-col items-center gap-1">
+                    <div class="flex items-center gap-2 text-xs text-gray-400 font-medium" id="preview-page-nav" style="display: none;">
+                        <span>Page</span>
+                        <input type="number" id="preview-page-input" class="bg-gray-800 border border-gray-700 text-white rounded px-2 py-1 w-12 text-center focus:outline-none" onchange="previewGoToPage()">
+                        <span>of <span id="preview-total-pages">1</span></span>
+                    </div>
+                    <span id="preview-batch-status" class="text-xs text-gray-400 font-medium font-mono" style="display: none;"></span>
                 </div>
-                <button type="button" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none" onmousedown="event.preventDefault();" onclick="previewNextPage()"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path></svg></button>
+                <button type="button" id="preview-batch-next-btn" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none disabled:hover:text-gray-400" onmousedown="event.preventDefault();" onclick="previewNextBatch()" title="Next Batch (Alt + Down)"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path></svg></button>
             </div>
             <div class="w-full relative">
                 <textarea id="custom-filename" rows="3" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-6 py-4 text-white text-sm font-medium focus:outline-none focus:border-blue-500 transition-colors shadow-inner resize-none" placeholder="belge ismini buraya yazınız" autocomplete="off"></textarea>
@@ -627,30 +630,58 @@
       confirmExtract(true);
     }
 
+    // Every generated PDF in the left panel is a "batch". Ordered by DOM position
+    // so batch-switching in the rename preview matches the order shown in the list.
+    function getRenameQueueButtons() {
+        return Array.from(document.querySelectorAll('#output-list li:not(#output-empty) .rename-btn'));
+    }
+
     function updateBatchPreviewUI() {
         if (batchPreviewItems.length === 0) return;
         const item = batchPreviewItems[currentBatchPreviewIndex];
-        
+
         const previewImg = document.getElementById('naming-preview-img');
         if (previewImg) {
             previewImg.src = item.src;
             previewImg.dataset.rotation = item.rotation;
             if (typeof resetZoom === 'function') resetZoom();
         }
-        
+
+        const queueButtons = getRenameQueueButtons();
+        const queueLength = queueButtons.length;
+        const queueIndex = queueButtons.findIndex(btn => btn.dataset.fileId === renamingFileId);
+        const hasMultiplePages = batchPreviewItems.length > 1;
+        const hasMultipleBatches = queueLength > 1;
+
         const titleEl = document.getElementById('preview-modal-title');
+        if (titleEl) titleEl.textContent = hasMultiplePages ? "Batch Preview" : "First Page Preview";
+
         const navContainer = document.getElementById('preview-nav-container');
-        if (batchPreviewItems.length > 1) {
-            if (titleEl) titleEl.textContent = "Batch Preview";
-            if (navContainer) {
-                navContainer.style.display = "flex";
+        if (navContainer) navContainer.style.display = (hasMultiplePages || hasMultipleBatches) ? "flex" : "none";
+
+        const pageNav = document.getElementById('preview-page-nav');
+        if (pageNav) {
+            pageNav.style.display = hasMultiplePages ? "flex" : "none";
+            if (hasMultiplePages) {
                 document.getElementById('preview-page-input').value = currentBatchPreviewIndex + 1;
                 document.getElementById('preview-total-pages').textContent = batchPreviewItems.length;
             }
-        } else {
-            if (titleEl) titleEl.textContent = "First Page Preview";
-            if (navContainer) navContainer.style.display = "none";
         }
+
+        const batchStatus = document.getElementById('preview-batch-status');
+        if (batchStatus) {
+            batchStatus.style.display = hasMultipleBatches ? "block" : "none";
+            if (hasMultipleBatches) {
+                batchStatus.textContent = `Batch ${queueIndex + 1} / ${queueLength}`;
+            }
+        }
+
+        [document.getElementById('preview-batch-prev-btn'), document.getElementById('preview-batch-next-btn')].forEach(btn => {
+            if (!btn) return;
+            btn.disabled = !hasMultipleBatches;
+            btn.classList.toggle('opacity-30', !hasMultipleBatches);
+            btn.classList.toggle('cursor-not-allowed', !hasMultipleBatches);
+        });
     }
 
     function previewPrevPage() {
@@ -702,24 +733,57 @@
       }
     }
 
-    function openRenameModal(fileId, currentName, pageCount = 1) {
+    function loadRenameModalContent(fileId, currentName, pageCount) {
       renamingFileId = fileId;
-      
+
       batchPreviewItems = [];
       for (let i = 0; i < pageCount; i++) {
         batchPreviewItems.push({ src: '/page/' + fileId + '/' + i, rotation: 0 });
       }
       currentBatchPreviewIndex = 0;
       updateBatchPreviewUI();
-      
+
+      const input = document.getElementById('custom-filename');
+      input.value = currentName.replace(/\.pdf$/i, '');
+    }
+
+    function openRenameModal(fileId, currentName, pageCount = 1) {
+      loadRenameModalContent(fileId, currentName, pageCount);
+
       const m = document.getElementById('naming-modal');
       if (m) m.classList.add('active');
       document.body.classList.add('modal-open');
-      
-      const input = document.getElementById('custom-filename');
-      let baseName = currentName.replace(/\.pdf$/i, '');
-      input.value = baseName;
-      input.focus();
+
+      document.getElementById('custom-filename').focus();
+    }
+
+    // Switches the rename preview to the previous/next generated PDF ("batch") in the
+    // left panel, wrapping around. Independent of the main grid's Batch Mode navigation.
+    function previewPrevBatch() {
+      const queueButtons = getRenameQueueButtons();
+      if (queueButtons.length <= 1) return;
+      let idx = queueButtons.findIndex(btn => btn.dataset.fileId === renamingFileId);
+      if (idx === -1) idx = 0;
+      idx = (idx - 1 + queueButtons.length) % queueButtons.length;
+      switchRenameModalToQueueButton(queueButtons[idx]);
+    }
+
+    function previewNextBatch() {
+      const queueButtons = getRenameQueueButtons();
+      if (queueButtons.length <= 1) return;
+      let idx = queueButtons.findIndex(btn => btn.dataset.fileId === renamingFileId);
+      if (idx === -1) idx = 0;
+      idx = (idx + 1) % queueButtons.length;
+      switchRenameModalToQueueButton(queueButtons[idx]);
+    }
+
+    function switchRenameModalToQueueButton(btn) {
+      const fileId = btn.dataset.fileId;
+      const pageCount = parseInt(btn.dataset.pageCount, 10) || 1;
+      const filenameEl = btn.closest('li')?.querySelector('p.truncate');
+      const filename = filenameEl ? filenameEl.textContent : fileId;
+      loadRenameModalContent(fileId, filename, pageCount);
+      document.getElementById('custom-filename').focus();
     }
 
     async function submitRename(fileId, newName) {
@@ -1257,6 +1321,21 @@
                     e.preventDefault();
                     if (isInput) activeEl.blur(); // Trigger onchange if renaming
                     nextBatch();
+                }
+            }
+
+            if (e.altKey && e.key === 'ArrowUp') {
+                const isModalOpen = document.getElementById('naming-modal')?.classList.contains('active');
+                if (isModalOpen) {
+                    e.preventDefault();
+                    previewPrevBatch();
+                }
+            }
+            if (e.altKey && e.key === 'ArrowDown') {
+                const isModalOpen = document.getElementById('naming-modal')?.classList.contains('active');
+                if (isModalOpen) {
+                    e.preventDefault();
+                    previewNextBatch();
                 }
             }
         });

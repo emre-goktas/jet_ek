@@ -5,6 +5,8 @@ Response: HTML fragment added to the left panel via HTMX.
 """
 import logging
 # pyrefly: ignore [missing-import]
+import pymupdf
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, HTTPException, Request
 # pyrefly: ignore [missing-import]
 from pydantic import BaseModel
@@ -73,6 +75,10 @@ def rename_pdf(file_id: str, req: RenameRequest, request: Request):
         logger.exception(f"Rename failed for file_id={file_id}")
         raise HTTPException(status_code=500, detail="Rename failed.")
 
+    doc = pymupdf.open(str(new_path))
+    page_count = len(doc)
+    doc.close()
+
     return templates.TemplateResponse(
         request=request,
         name="partials/pdf_item.html",
@@ -81,5 +87,6 @@ def rename_pdf(file_id: str, req: RenameRequest, request: Request):
             "file_id": file_id,
             "filename": new_filename,
             "label": label,
+            "page_count": page_count,
         },
     )
