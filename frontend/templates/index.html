@@ -851,6 +851,7 @@
       if (fileId) restoreExtractedPages(fileId);
       li.remove();
       updateBulkDownloadVisibility();
+      refreshBatchNavStatus();
     }
 
     function handleLoadingFailure(taskId, errorMsg) {
@@ -1371,6 +1372,36 @@
         
         // Auto focus input when switching batches
         setTimeout(() => document.getElementById('batch-name-input').focus(), 50);
+    }
+
+    // Keeps currentBatchIndex and the "X / Y" nav counter correct after the output list
+    // changes shape without a batch-nav action causing it (e.g. deleting an item). The
+    // batch actually being viewed is identified by its file_id (read off the page-cards
+    // currently in the grid), not by position, since deleting an earlier item shifts
+    // everyone after it down by one.
+    function refreshBatchNavStatus() {
+        if (!isBatchMode) return;
+
+        const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
+        const total = listItems.length;
+        const viewedFileId = document.querySelector('.page-card')?.dataset.pdfId;
+        const newIndex = viewedFileId
+            ? Array.from(listItems).findIndex(btn => btn.dataset.fileId === viewedFileId)
+            : -1;
+
+        if (newIndex === -1) {
+            // The batch we were viewing was itself the one just removed.
+            if (total > 0) {
+                loadBatch(Math.min(currentBatchIndex, total - 1));
+            } else {
+                toggleBatchMode(); // no batches left; fall back out of batch mode
+            }
+            return;
+        }
+
+        currentBatchIndex = newIndex;
+        const statusEl = document.getElementById('batch-nav-status');
+        if (statusEl) statusEl.textContent = `${newIndex + 1} / ${total}`;
     }
 
     async function fetchAndRenderBatch(fileId, filename) {
