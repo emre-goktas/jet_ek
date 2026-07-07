@@ -303,6 +303,13 @@ body.modal-open {
   /* Hover highlight to restore */
 }
 
+/* Pages consumed by an extraction: fully removed from the grid (not just dimmed like
+   .deleted-page), since they now live in an output file. Restored by deleting that
+   output from the left panel, not from the card itself. */
+.extracted-page {
+  display: none !important;
+}
+
 /* ─── Sortable Output List Row Numbers ──────────────── */
 #output-list {
   counter-reset: pdf-item-counter;

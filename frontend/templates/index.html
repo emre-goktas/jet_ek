@@ -270,6 +270,16 @@
     let selectionHistory = []; // Track selection actions for undo
     let deletedPages = new Set();
     let lastClickedCardId = null;
+
+    // Pages consumed by an extraction are hidden from their source grid. Keyed by the
+    // source id (an original upload's pdf_id, or an already-extracted batch's file_id,
+    // since Batch Mode lets you extract from an extraction) -> Set of page indices.
+    // This is separate from the DOM so it survives fetchAndRenderBatch() re-rendering
+    // the grid from scratch when switching batches.
+    let extractedPageIndices = {};
+    // What each output (keyed by its temp UI id, then renamed to its real file_id once
+    // the server responds) consumed, so deleting that output can restore those pages.
+    let outputSourcePages = {};
     let pageRotations = {};
     let sortableInstance = null;
     let currentCustomName = '';
@@ -462,7 +472,7 @@
       if (event.target.closest('.drag-handle') || event.target.closest('.small-rotate-btn') || event.target.closest('.delete-btn-inline')) return;
       
       const cid = card.id;
-      if (deletedPages.has(cid)) return;
+      if (deletedPages.has(cid) || card.classList.contains('extracted-page')) return;
 
       const isShift = event.shiftKey;
       const isMeta = event.ctrlKey || event.metaKey;
@@ -482,7 +492,7 @@
           const end = Math.max(idx1, idx2);
           for (let i = start; i <= end; i++) {
             const currentId = cards[i].id;
-            if (!deletedPages.has(currentId) && !selectedPages.has(currentId)) {
+            if (!deletedPages.has(currentId) && !selectedPages.has(currentId) && !cards[i].classList.contains('extracted-page')) {
               selectedPages.add(currentId);
               added.push(currentId);
             }
@@ -516,7 +526,7 @@
 
     function selectAllPages() {
       document.querySelectorAll('.page-card').forEach(c => {
-        if (!deletedPages.has(c.id)) selectedPages.add(c.id);
+        if (!deletedPages.has(c.id) && !c.classList.contains('extracted-page')) selectedPages.add(c.id);
       });
       updateHighlight();
       updateSelectionInfo();
@@ -751,8 +761,21 @@
       `;
       if (isBatchMode && currentBatchIndex >= 0) {
         const listItems = list.querySelectorAll('li:not(#output-empty)');
-        if (listItems.length > currentBatchIndex) {
-          listItems[currentBatchIndex].insertAdjacentElement('afterend', wrapper);
+        const parentLi = listItems[currentBatchIndex];
+        const parentFileId = parentLi ? getListItemFileId(parentLi) : null;
+        if (parentLi && parentFileId) {
+          wrapper.dataset.parentFileId = parentFileId;
+          // Insert after the last existing item in this batch's group (the parent itself,
+          // or the most recent prior extraction from it) so repeated extractions from the
+          // same batch stack in chronological order underneath it, instead of each new one
+          // jumping straight above the previous one.
+          let insertAfter = parentLi;
+          let sibling = parentLi.nextElementSibling;
+          while (sibling && sibling.dataset.parentFileId === parentFileId) {
+            insertAfter = sibling;
+            sibling = sibling.nextElementSibling;
+          }
+          insertAfter.insertAdjacentElement('afterend', wrapper);
         } else {
           list.appendChild(wrapper);
         }
@@ -762,13 +785,72 @@
       updateBulkDownloadVisibility();
     }
 
+    function getListItemFileId(li) {
+      return li?.querySelector('[data-file-id]')?.dataset.fileId || null;
+    }
+
+    // Marks the given page-card elements as consumed by outputKey: hides them from
+    // their source grid immediately, and records what to restore if outputKey is
+    // later deleted from the output list.
+    function markPagesExtracted(cardEls, outputKey) {
+      outputSourcePages[outputKey] = cardEls.map(card => ({
+        pdf_id: card.dataset.pdfId,
+        page_idx: parseInt(card.dataset.pageIndex)
+      }));
+      cardEls.forEach(card => {
+        const pid = card.dataset.pdfId;
+        const idx = parseInt(card.dataset.pageIndex);
+        if (!extractedPageIndices[pid]) extractedPageIndices[pid] = new Set();
+        extractedPageIndices[pid].add(idx);
+        card.classList.add('extracted-page');
+      });
+    }
+
+    // Reverses markPagesExtracted for outputKey: un-hides its source pages (if their
+    // grid happens to be visible right now) and forgets they were ever extracted.
+    function restoreExtractedPages(outputKey) {
+      const sources = outputSourcePages[outputKey];
+      if (!sources) return;
+      delete outputSourcePages[outputKey];
+      sources.forEach(({ pdf_id, page_idx }) => {
+        extractedPageIndices[pdf_id]?.delete(page_idx);
+      });
+      reconcileExtractedState();
+    }
+
+    // Re-applies the extracted-page hidden state to whatever .page-card elements are
+    // currently in the DOM. Needed after the grid is rebuilt from scratch (batch switch,
+    // exiting batch mode) since that HTML comes fresh from the server with no notion of
+    // "some of these pages were already consumed by a later extraction".
+    function reconcileExtractedState() {
+      document.querySelectorAll('.page-card').forEach(card => {
+        const pid = card.dataset.pdfId;
+        const idx = parseInt(card.dataset.pageIndex);
+        card.classList.toggle('extracted-page', !!extractedPageIndices[pid]?.has(idx));
+      });
+    }
+
     function replaceLoadingWithOutput(taskId, html) {
       const loader = document.getElementById(`loading-task-${taskId}`);
       if (loader) {
         loader.removeAttribute('id');
         loader.innerHTML = html;
+        const realFileId = getListItemFileId(loader);
+        if (realFileId && outputSourcePages[taskId] && !outputSourcePages[realFileId]) {
+          outputSourcePages[realFileId] = outputSourcePages[taskId];
+          delete outputSourcePages[taskId];
+        }
         updateBulkDownloadVisibility();
       }
+    }
+
+    // Restores any pages this output consumed, then removes it from the list.
+    function removeOutputItem(button) {
+      const li = button.closest('li');
+      const fileId = getListItemFileId(li);
+      if (fileId) restoreExtractedPages(fileId);
+      li.remove();
+      updateBulkDownloadVisibility();
     }
 
     function handleLoadingFailure(taskId, errorMsg) {
@@ -797,7 +879,8 @@
 
       const cardsInOrder = Array.from(document.querySelectorAll('.page-card'));
       const extractionList = [];
-      
+      const extractedCardEls = [];
+
       cardsInOrder.forEach(card => {
         if (selectedPages.has(card.id) && !deletedPages.has(card.id)) {
           extractionList.push({
@@ -805,9 +888,10 @@
              page_idx: parseInt(card.dataset.pageIndex),
              rotation: pageRotations[card.id] || 0
           });
+          extractedCardEls.push(card);
         }
       });
-      
+
       if(extractionList.length === 0) {
           return;
       }
@@ -823,6 +907,7 @@
       // Generate a temp UI ID for tracking until response
       const tempUiId = 'temp-' + Math.random().toString(36).substring(2, 9);
       appendLoadingToOutputList(tempUiId, displayFilename);
+      markPagesExtracted(extractedCardEls, tempUiId);
       clearSelection();
 
       const res = await postAction('/extract', {
@@ -836,6 +921,7 @@
       } else {
         const loader = document.getElementById(`loading-task-${tempUiId}`);
         if (loader) loader.remove();
+        restoreExtractedPages(tempUiId); // extraction failed server-side, undo the optimistic hide
         updateBulkDownloadVisibility();
         showStatus('✗ Extraction request failed.', 'text-red-400');
       }
@@ -1303,6 +1389,7 @@
             const viewerContainer = document.getElementById('viewer');
             viewerContainer.innerHTML = html; // inject into viewer container
             initSortable(); // #viewer-inner was just replaced, so the old Sortable instance is stale
+            reconcileExtractedState(); // ...and so is any extracted-page hiding; the fresh HTML has none applied
 
             // Manually re-trigger viewerReady
             if (pageCountMatch && pdfIdMatch) {
