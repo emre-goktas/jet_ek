@@ -380,6 +380,28 @@
       }
     }
 
+    function initSortable() {
+      const inner = document.getElementById('viewer-inner');
+      const viewer = document.getElementById('viewer');
+      if (!inner) return;
+
+      if (sortableInstance) sortableInstance.destroy();
+      sortableInstance = new Sortable(inner, {
+        multiDrag: true,
+        multiDragKey: 'ctrl',
+        selectedClass: 'sortable-native-selected',
+        animation: 150,
+        handle: '.drag-handle',
+        forceFallback: true,
+        fallbackClass: 'sortable-drag',
+        ghostClass: 'sortable-ghost',
+        dragClass: 'sortable-drag',
+        scroll: viewer,
+        scrollSensitivity: 80,
+        scrollSpeed: 20
+      });
+    }
+
     async function sendFile(file) {
       const form = new FormData();
       form.append('file', file);
@@ -420,20 +442,7 @@
         document.getElementById('toolbar').classList.remove('hidden');
         document.getElementById('upload-hint')?.remove();
 
-        inner = document.getElementById('viewer-inner');
-
-        if (sortableInstance) sortableInstance.destroy();
-        sortableInstance = new Sortable(inner, {
-          multiDrag: true,
-          selectedClass: 'selected',
-          animation: 150,
-          handle: '.drag-handle',
-          ghostClass: 'sortable-ghost',
-          dragClass: 'sortable-drag',
-          scroll: viewer,
-          scrollSensitivity: 80,
-          scrollSpeed: 20
-        });
+        initSortable();
         return true;
       } catch (err) {
         showStatus('✗ Connection error.', 'text-red-400');
@@ -473,7 +482,7 @@
           const end = Math.max(idx1, idx2);
           for (let i = start; i <= end; i++) {
             const currentId = cards[i].id;
-            if (!selectedPages.has(currentId)) {
+            if (!deletedPages.has(currentId) && !selectedPages.has(currentId)) {
               selectedPages.add(currentId);
               added.push(currentId);
             }
@@ -1112,8 +1121,11 @@
                 const isScrollbar = e.offsetX > e.target.clientWidth || e.offsetY > e.target.clientHeight;
                 if (!isScrollbar) {
                     const inp = document.getElementById('batch-name-input');
-                    // Avoid preventing default on inputs to allow normal text selection
-                    if (inp && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                    // Avoid preventing default on inputs to allow normal text selection.
+                    // Also skip page-card clicks entirely: forcing focus back onto the batch
+                    // name field on every click there permanently pins document.activeElement
+                    // to an <input>, which silently disables the Ctrl+Z/Ctrl+X page shortcuts.
+                    if (inp && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && !e.target.closest('.page-card')) {
                         e.preventDefault();
                         inp.focus();
                     }
@@ -1290,7 +1302,8 @@
             
             const viewerContainer = document.getElementById('viewer');
             viewerContainer.innerHTML = html; // inject into viewer container
-            
+            initSortable(); // #viewer-inner was just replaced, so the old Sortable instance is stale
+
             // Manually re-trigger viewerReady
             if (pageCountMatch && pdfIdMatch) {
                 document.body.dispatchEvent(new CustomEvent('viewerReady', {
