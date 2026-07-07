@@ -20,14 +20,14 @@
       onclick="downloadSingleFile('{{ file_id }}', this)"
       class="download-btn flex-1 text-center"
     >
-      ↓ Download
+      ↓ İndir
     </button>
     <button
       onclick="openRenameModal('{{ file_id }}', '{{ filename }}', {{ page_count | default(1) }})"
       class="rename-btn p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded transition-colors"
       data-file-id="{{ file_id }}"
       data-page-count="{{ page_count | default(1) }}"
-      title="Rename"
+      title="Yeniden adlandır"
     >
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round"
@@ -37,7 +37,7 @@
     <button
       onclick="removeOutputItem(this)"
       class="p-2 text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
-      title="Delete"
+      title="Sil"
     >
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
