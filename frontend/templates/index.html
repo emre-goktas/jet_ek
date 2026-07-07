@@ -919,7 +919,18 @@
     function removeOutputItem(button) {
       const li = button.closest('li');
       const fileId = getListItemFileId(li);
-      if (fileId) restoreExtractedPages(fileId);
+      if (fileId) removeOutputByFileId(fileId);
+      else li.remove();
+    }
+
+    // Same as removeOutputItem, but addressed by file_id instead of a click on its
+    // own button — used when code (rather than the user) decides an output should go
+    // away, e.g. a batch that's been emptied out via full extraction or full deletion.
+    function removeOutputByFileId(fileId) {
+      const btn = document.querySelector(`.download-btn[data-file-id='${fileId}']`);
+      const li = btn ? btn.closest('li') : null;
+      if (!li) return;
+      restoreExtractedPages(fileId);
       li.remove();
       updateBulkDownloadVisibility();
       refreshBatchNavStatus();
@@ -990,6 +1001,7 @@
 
       if (res) {
         replaceLoadingWithOutput(tempUiId, res);
+        await persistBatchExtractionCut(extractedCardEls); // no-op unless currently viewing a batch in Batch Mode
       } else {
         const loader = document.getElementById(`loading-task-${tempUiId}`);
         if (loader) loader.remove();
@@ -1545,45 +1557,90 @@
     // Persists the active batch's current grid state (rotation/deletion/reorder) —
     // the only edit type that isn't already auto-saved via renameActiveBatch — back
     // to the server, rewriting that same file_id's PDF in place.
-    async function updateActiveBatch() {
-        if (!isBatchMode || currentBatchIndex < 0) return;
-        const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
-        if (listItems.length === 0) return;
-        const fileId = listItems[currentBatchIndex].dataset.fileId;
-
-        const pages = Array.from(document.querySelectorAll('.page-card'))
-            .filter(card => !deletedPages.has(card.id))
+    // Reads the current grid's page order/rotation, excluding deleted cards and any
+    // cards already sent to another batch (.extracted-page — see persistBatchExtractionCut)
+    // and, optionally, a caller-supplied set of cards to leave out too.
+    function gatherCurrentGridPages(excludeCardEls = []) {
+        const excludeSet = new Set(excludeCardEls);
+        return Array.from(document.querySelectorAll('.page-card'))
+            .filter(card => !excludeSet.has(card) && !deletedPages.has(card.id) && !card.classList.contains('extracted-page'))
             .map(card => ({
                 pdf_id: card.dataset.pdfId,
                 page_idx: parseInt(card.dataset.pageIndex),
                 rotation: pageRotations[card.id] || 0
             }));
+    }
 
-        if (pages.length === 0) {
-            showStatus('✗ Cannot update to an empty batch — restore at least one page.', 'text-red-400');
-            return;
-        }
-
+    // POSTs the given page list to /update/{fileId}, refreshes that output-list row,
+    // and clears out now-stale per-page bookkeeping for fileId. Returns whether it
+    // succeeded; the caller decides whether/when to reload the grid.
+    async function persistPagesToBatch(fileId, pages) {
         const res = await postAction('/update/' + fileId, { pages });
-        if (!res) return;
+        if (!res) return false;
 
         const link = document.querySelector(`.download-btn[data-file-id='${fileId}']`);
         const li = link ? link.closest('li') : null;
         if (li) li.innerHTML = res;
 
         // Scoped clear: only THIS file_id's card-keyed state is stale (indices were
-        // just renumbered by the delete/reorder/rotate-reset). Other batches may have
-        // their own unsaved pending edits — do not touch those.
+        // just renumbered). Other batches may have their own unsaved pending edits —
+        // do not touch those.
         const prefix = `page-card-${fileId}-`;
         Object.keys(pageRotations).forEach(k => { if (k.startsWith(prefix)) delete pageRotations[k]; });
         Array.from(deletedPages).forEach(k => { if (k.startsWith(prefix)) deletedPages.delete(k); });
 
-        // extractedPageIndices[fileId] refers to pre-update page numbering; safest
-        // option is to drop it (previously-hidden "already extracted" pages become
-        // visible again) rather than risk hiding the wrong pages under the new numbering.
+        // extractedPageIndices[fileId] refers to pre-persist page numbering, and once
+        // extraction is a real cut (see persistBatchExtractionCut) there is no more
+        // "restore into the source" meaning for it anyway — drop it.
         delete extractedPageIndices[fileId];
 
-        loadBatch(currentBatchIndex); // refetch fresh grid: new order/count, rotations reset, thumbnails regenerated server-side
+        return true;
+    }
+
+    async function updateActiveBatch() {
+        if (!isBatchMode || currentBatchIndex < 0) return;
+        const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
+        if (listItems.length === 0) return;
+        const fileId = listItems[currentBatchIndex].dataset.fileId;
+
+        const pages = gatherCurrentGridPages();
+        if (pages.length === 0) {
+            // Nothing left to keep — a 0-page batch isn't a meaningful thing to save,
+            // so treat "delete every page, then Update" as "remove this batch".
+            removeOutputByFileId(fileId);
+            showStatus('✓ Batch removed — all its pages were deleted.', 'text-green-400');
+            return;
+        }
+
+        if (await persistPagesToBatch(fileId, pages)) {
+            loadBatch(currentBatchIndex); // refetch fresh grid: new order/count, rotations reset, thumbnails regenerated server-side
+        }
+    }
+
+    // Extracting pages while viewing a batch in Batch Mode is a cut, not a copy: the
+    // extracted pages must actually leave the source batch's file on the server, or
+    // the same pages could be re-extracted into unlimited further batches and — since
+    // updateActiveBatch() didn't used to exclude them either — clicking Update later
+    // would silently write them back into the source, undoing the extraction.
+    async function persistBatchExtractionCut(extractedCardEls) {
+        if (!isBatchMode || currentBatchIndex < 0) return;
+        const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
+        if (listItems.length === 0) return;
+        const sourceFileId = listItems[currentBatchIndex].dataset.fileId;
+
+        const remainingPages = gatherCurrentGridPages(extractedCardEls);
+        if (remainingPages.length === 0) {
+            // Extracting every remaining page leaves nothing behind — a 0-page batch
+            // isn't meaningful, so remove the now-fully-consumed source outright
+            // instead of leaving a stale, endlessly re-extractable duplicate around.
+            removeOutputByFileId(sourceFileId);
+            showStatus('✓ Batch fully extracted and removed.', 'text-green-400');
+            return;
+        }
+
+        if (await persistPagesToBatch(sourceFileId, remainingPages)) {
+            loadBatch(currentBatchIndex);
+        }
     }
   </script>
 </body>
