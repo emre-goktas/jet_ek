@@ -31,4 +31,7 @@ async def get_page_image(pdf_id: str, page_number: int):
             logger.exception(f"Page render error for pdf_id={pdf_id} page={page_number}")
             raise HTTPException(status_code=500, detail="Page render error.")
 
-    return FileResponse(path=str(png_path), media_type="image/png")
+    # Content at this URL can change after a Batch Mode Update rewrites the underlying
+    # PDF (same pdf_id/page_number, new bytes) — no-cache forces revalidation (a cheap
+    # conditional request) instead of the browser silently reusing a stale thumbnail.
+    return FileResponse(path=str(png_path), media_type="image/png", headers={"Cache-Control": "no-cache"})

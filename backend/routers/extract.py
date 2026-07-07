@@ -90,3 +90,38 @@ def rename_pdf(file_id: str, req: RenameRequest, request: Request):
             "page_count": page_count,
         },
     )
+
+class UpdateRequest(BaseModel):
+    pages: list[PageExtract]
+
+@router.post("/update/{file_id}")
+def update_pdf(file_id: str, req: UpdateRequest, request: Request):
+    """Persists Batch Mode grid edits (rotate/delete/reorder) to file_id in place."""
+    if not req.pages:
+        raise HTTPException(status_code=400, detail="No pages to update.")
+
+    try:
+        pages_dicts = [p.model_dump() for p in req.pages]
+        pdf_service.update_pages(file_id, pages_dicts)
+        _, filename, page_count = pdf_service.get_pdf_info(file_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception(f"Update failed for file_id={file_id}")
+        raise HTTPException(status_code=500, detail="Update failed.")
+
+    label = f"{page_count} Pages" if page_count > 1 else "Page 1"
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/pdf_item.html",
+        context={
+            "request": request,
+            "file_id": file_id,
+            "filename": filename,
+            "label": label,
+            "page_count": page_count,
+        },
+    )

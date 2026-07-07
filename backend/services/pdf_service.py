@@ -11,6 +11,7 @@ import uuid
 import io
 import json
 import asyncio
+import tempfile
 import threading
 from pathlib import Path
 from typing import Literal
@@ -159,25 +160,16 @@ def render_page(pdf_id: str, page_num: int, dpi: int = 120) -> Path:
     return out_path
 
 
-def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[str, str, int]:
-    """Extracts the specified list of pages from potentially multiple PDFs
-    and rotates them according to the specified angles.
-
-    Args:
-        pages: List of dicts e.g. [{"pdf_id": "id", "page_idx": 0, "rotation": 90}]
-        custom_name: Optional custom filename prefix.
-
-    Returns:
-        (file_id, filename, actual_page_count)
+def _build_pdf_from_pages(pages: list[dict]) -> "pymupdf.Document":
+    """Assembles a new in-memory document from an ordered page list, each dict
+    shaped {"pdf_id": "id", "page_idx": 0, "rotation": 90}. Opens each unique
+    source pdf_id once (locked for the duration via lock_file), applies the
+    requested rotation delta on top of whatever rotation the source page already
+    carries, and skips out-of-range page_idx values with a warning instead of
+    raising. Caller validates the pages list (non-empty / size ceiling) and is
+    responsible for closing the returned document.
     """
-    if not pages:
-        raise ValueError("No valid pages selected.")
-
-    if len(pages) > 5000:
-        raise ValueError("To protect system performance, a maximum of 5000 pages can be extracted at once.")
-
     new_doc = pymupdf.open()
-    has_rotation = False
 
     from contextlib import ExitStack
     open_docs = {}
@@ -200,9 +192,31 @@ def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[st
                 if rot != 0:
                     page = new_doc[-1]
                     page.set_rotation((page.rotation + rot) % 360)
-                    has_rotation = True
             else:
-                logging.warning(f"extract_pages: skipping out-of-range page_idx={idx} for pdf_id={pid}")
+                logging.warning(f"_build_pdf_from_pages: skipping out-of-range page_idx={idx} for pdf_id={pid}")
+
+    return new_doc
+
+
+def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[str, str, int]:
+    """Extracts the specified list of pages from potentially multiple PDFs
+    and rotates them according to the specified angles.
+
+    Args:
+        pages: List of dicts e.g. [{"pdf_id": "id", "page_idx": 0, "rotation": 90}]
+        custom_name: Optional custom filename prefix.
+
+    Returns:
+        (file_id, filename, actual_page_count)
+    """
+    if not pages:
+        raise ValueError("No valid pages selected.")
+
+    if len(pages) > 5000:
+        raise ValueError("To protect system performance, a maximum of 5000 pages can be extracted at once.")
+
+    has_rotation = any(p.get("rotation", 0) for p in pages)
+    new_doc = _build_pdf_from_pages(pages)
 
     actual_count = len(new_doc)
     file_id = uuid.uuid4().hex
@@ -223,6 +237,58 @@ def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[st
     _PATH_CACHE[file_id] = out_path
 
     return file_id, filename, actual_count
+
+
+def update_pages(file_id: str, pages: list[dict]) -> int:
+    """Rebuilds file_id's PDF content IN PLACE from the given ordered page list
+    (reorder/delete/rotate persisted from Batch Mode), keeping the same file_id.
+
+    Since the pages typically self-reference file_id (a batch saving its own
+    edited grid), the destination must not be truncated while still being read
+    as a source: build the whole new document first, close every source handle,
+    then atomically swap it in via a temp file + os.replace.
+
+    Args:
+        file_id: existing output's id
+        pages: List of dicts e.g. [{"pdf_id": "id", "page_idx": 0, "rotation": 90}],
+               in the final desired order.
+
+    Returns:
+        actual_page_count after the rebuild.
+    """
+    if not pages:
+        raise ValueError("Cannot update to an empty PDF.")
+
+    if len(pages) > 5000:
+        raise ValueError("To protect system performance, a maximum of 5000 pages can be updated at once.")
+
+    dest_path = get_output_path(file_id)
+
+    with lock_file(dest_path):
+        new_doc = _build_pdf_from_pages(pages)
+        actual_count = len(new_doc)
+
+        tmp_name = None
+        try:
+            fd, tmp_name = tempfile.mkstemp(dir=STORAGE_DIR, suffix=".pdf")
+            os.close(fd)
+            try:
+                new_doc.save(tmp_name)
+            finally:
+                new_doc.close()
+            os.chmod(tmp_name, 0o644)  # match the permissions files normally get, not mkstemp's 0600
+            os.replace(tmp_name, dest_path)  # atomic same-directory swap
+        except Exception:
+            if tmp_name:
+                Path(tmp_name).unlink(missing_ok=True)
+            raise
+
+    # render_page() returns a cached PNG unconditionally if one already exists on
+    # disk, so stale thumbnails from the pre-update content/order must be dropped.
+    for stale_png in STORAGE_DIR.glob(f"{file_id}_page_*.png"):
+        stale_png.unlink(missing_ok=True)
+
+    return actual_count
 
 
 def get_output_path(file_id: str) -> Path:
