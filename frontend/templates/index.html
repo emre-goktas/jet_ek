@@ -39,11 +39,18 @@
 <body class="bg-gray-950 text-gray-100 h-screen flex flex-col overflow-hidden font-sans">
 
   <!-- HEADER -->
-  <header class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center gap-3 shrink-0 relative overflow-hidden">
+  <header class="bg-gray-900 border-b border-gray-800 px-3 sm:px-6 py-3 flex items-center gap-3 shrink-0 relative overflow-hidden">
     <!-- Subtle speed lines background in header -->
     <div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image: repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(59,130,246,0.3) 10px, rgba(59,130,246,0.3) 12px);"></div>
-    
-    <div class="relative flex items-center justify-center bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg p-1.5 shadow-[0_0_15px_rgba(34,211,238,0.4)]">
+
+    <!-- Sidebar toggle: mobile/tablet only, opens the left panel as an overlay drawer -->
+    <button id="btn-sidebar-toggle" class="lg:hidden relative z-10 p-1.5 text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors shrink-0" onclick="toggleSidebar()" title="Menü" aria-label="Menü">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
+
+    <div class="relative flex items-center justify-center bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg p-1.5 shadow-[0_0_15px_rgba(34,211,238,0.4)] shrink-0">
       <svg class="w-5 h-5 text-gray-900 translate-x-0.5 -translate-y-0.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
         <path d="M22 2L11 13"></path>
         <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
@@ -56,10 +63,13 @@
   </header>
 
   <!-- MAIN: Sol Panel + PDF Viewer -->
-  <main class="flex flex-1 overflow-hidden">
+  <main class="flex flex-1 overflow-hidden relative">
+
+    <!-- Backdrop: only shown on mobile/tablet while the sidebar drawer is open -->
+    <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/60 z-30 lg:hidden" onclick="toggleSidebar()"></div>
 
     <!-- LEFT PANEL: Generated PDFs -->
-    <aside class="w-64 shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
+    <aside id="sidebar" class="w-72 sm:w-64 shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
       <div class="px-4 py-3 border-b border-gray-800 flex gap-2">
         <!-- Batch Mode Toggle Button -->
         <button id="btn-batch-mode" class="flex-1 py-1.5 text-gray-400 bg-gray-800 hover:bg-gray-700 hover:text-white rounded transition-colors flex items-center justify-center border border-transparent" title="Grup Izgara Düzeni" onclick="toggleBatchMode()">
@@ -109,17 +119,17 @@
     </aside>
 
     <!-- PDF VIEWER -->
-    <section class="flex-1 flex flex-col overflow-hidden">
+    <section class="flex-1 min-w-0 flex flex-col overflow-hidden">
 
       <!-- Toolbar -->
-      <div id="toolbar" class="hidden bg-gray-900 border-b border-gray-800 px-5 py-2 flex items-center gap-3 shrink-0">
-        <div id="selection-info-container" class="flex-1 flex items-center gap-3">
-          <span id="selection-info" class="text-sm text-gray-400">
+      <div id="toolbar" class="hidden bg-gray-900 border-b border-gray-800 px-3 sm:px-5 py-2 flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
+        <div id="selection-info-container" class="flex flex-wrap items-center gap-2 sm:gap-3">
+          <span id="selection-info" class="text-sm text-gray-400 shrink-0 whitespace-nowrap">
             Seçmek için sayfalara tıklayın.
           </span>
-          <div id="batch-nav-ui" class="hidden flex flex-col justify-center gap-1 border-l border-gray-700 pl-3 ml-2">
-            <div class="flex gap-2">
-              <div class="relative w-[576px]">
+          <div id="batch-nav-ui" class="hidden flex flex-col justify-center gap-1 border-l border-gray-700 pl-3 ml-2 w-full sm:w-auto">
+            <div class="flex flex-wrap gap-2">
+              <div class="relative w-full sm:w-auto sm:flex-1 sm:min-w-[220px] sm:max-w-[576px]">
                 <input type="text" id="batch-name-input"
                   class="w-full bg-gray-800 text-gray-200 px-3 py-3 rounded-lg text-base font-medium border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors pr-10"
                   placeholder="Grup Adı"
@@ -143,7 +153,7 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <button
             class="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 transition-colors"
             onclick="selectAllPages()">
@@ -166,7 +176,7 @@
           </button>
         </div>
 
-        <div class="h-6 w-px bg-gray-800 mx-1"></div>
+        <div class="hidden sm:block h-6 w-px bg-gray-800 mx-1"></div>
 
         <button id="btn-extract" class="action-btn bg-blue-600 hover:bg-blue-500 text-white border-blue-500"
           onclick="doExtract()" title="Seçili Sayfaları Ayıkla">
@@ -175,7 +185,7 @@
       </div>
 
       <!-- Page list -->
-      <div id="viewer" class="flex-1 overflow-y-auto px-6 py-4">
+      <div id="viewer" class="flex-1 overflow-y-auto px-3 sm:px-6 py-3 sm:py-4">
         <div id="upload-hint" class="flex flex-col items-center justify-center h-full gap-4 text-gray-600">
           <svg class="w-20 h-20" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round"
@@ -188,13 +198,13 @@
   </main>
 
   <!-- UPLOAD AREA -->
-  <footer class="bg-gray-900 border-t border-gray-800 px-6 py-4 shrink-0 relative">
-    <div id="drop-zone" class="relative border-2 border-dashed border-gray-700 rounded-xl p-5 text-center
+  <footer class="bg-gray-900 border-t border-gray-800 px-3 sm:px-6 py-3 sm:py-4 shrink-0 relative">
+    <div id="drop-zone" class="relative border-2 border-dashed border-gray-700 rounded-xl p-3 sm:p-5 text-center
              hover:border-blue-500 transition-colors duration-200 overflow-hidden cursor-pointer"
       ondragover="event.preventDefault(); this.classList.add('border-blue-400','bg-blue-950')"
       ondragleave="this.classList.remove('border-blue-400','bg-blue-950')"
       ondrop="handleDrop(event)">
-      
+
       <input id="file-input" type="file" accept=".pdf,.tiff,.tif,.jpeg,.jpg,.png" multiple
         class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
         onchange="uploadFile(this)" title="Dosya seçin veya buraya sürükleyin" />
@@ -222,7 +232,7 @@
       style="max-width: 60rem; width: 100%; height: 90vh;" onclick="event.stopPropagation()">
       
       <!-- Top: Preview (Large) -->
-      <div class="w-full flex-1 bg-gray-950 p-4 flex flex-col border-b border-gray-800 overflow-hidden relative">
+      <div class="w-full flex-1 bg-gray-950 p-2 sm:p-4 flex flex-col border-b border-gray-800 overflow-hidden relative">
           <div class="flex justify-between items-center mb-2 z-10">
               <p id="preview-modal-title" class="text-xs text-gray-400 uppercase tracking-widest font-semibold">İlk Sayfa Önizlemesi</p>
               <div class="flex gap-2">
@@ -237,7 +247,7 @@
       </div>
 
       <!-- Bottom: Form -->
-      <div class="w-full px-4 py-6 flex flex-col justify-center shrink-0">
+      <div class="w-full px-3 py-4 sm:px-4 sm:py-6 flex flex-col justify-center shrink-0">
           <div class="mb-4 w-full flex flex-col gap-3">
             <div class="flex items-center justify-between px-2" id="preview-nav-container" style="display: none;">
                 <button type="button" id="preview-batch-prev-btn" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none disabled:hover:text-gray-400" onmousedown="event.preventDefault();" onclick="previewPrevBatch()" title="Önceki Grup (Alt + Yukarı)"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg></button>
@@ -303,6 +313,12 @@
     let originalFilename = '';
     let currentBatchIndex = -1;
 
+    // Mobile/tablet left-panel drawer (see #sidebar / #sidebar-backdrop rules in
+    // app.css) — the sidebar is always visible as a static column at the lg breakpoint
+    // and up, so this toggle only has a visible effect below that width.
+    function toggleSidebar() {
+      document.body.classList.toggle('sidebar-open');
+    }
 
     function handleDrop(e) {
       console.log('DEBUG: handleDrop called', e);
@@ -1379,7 +1395,9 @@
         const uploadSection = document.getElementById('drop-zone');
         const uploadStatus = document.getElementById('upload-status');
         const batchNavUI = document.getElementById('batch-nav-ui');
-        
+
+        document.body.classList.remove('sidebar-open'); // reveal the grid on mobile after toggling from the drawer
+
         if (isBatchMode) {
             btn.classList.add('text-white', 'bg-blue-600', 'border-blue-500');
             btn.classList.remove('text-gray-400', 'bg-gray-800');
