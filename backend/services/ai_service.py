@@ -49,20 +49,35 @@ def log_ai_error(file_id: str, error_msg: str):
         "error": error_msg,
     })
 
-def _extract_first_page(path) -> str:
-    """Extracts the first page of the PDF at path into a new temporary PDF file
-    and returns its path. Caller is responsible for deleting the temp file."""
+def _extract_first_page(path) -> tuple[str, bool]:
+    """Extracts the first page of the PDF at path into a new temporary PDF file.
+    Returns (temp_path, is_landscape) — is_landscape reflects the page's current
+    /Rotate (page.rect is PyMuPDF's post-rotation, visual size), so the caller can
+    warn the AI about orientation via the prompt instead of us guessing a rotation
+    direction: a landscape page is geometrically ambiguous (genuinely landscape
+    content vs. a portrait page scanned sideways in either direction) with no
+    reliable signal to pick a correction automatically — a wrong guess would
+    silently make a fine page worse. Caller is responsible for deleting the temp
+    file."""
     fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
     src_doc = pymupdf.open(str(path))
     try:
         temp_doc = pymupdf.open()
         temp_doc.insert_pdf(src_doc, from_page=0, to_page=0)
+        rect = temp_doc[0].rect
+        is_landscape = rect.width > rect.height
         temp_doc.save(temp_pdf_path)
         temp_doc.close()
     finally:
         src_doc.close()
-    return temp_pdf_path
+    return temp_pdf_path, is_landscape
+
+LANDSCAPE_HINT = (
+    " NOT: Bu belgenin ilk sayfası yatay (yan) taranmış olabilir. Sayfanın "
+    "yönüne veya metnin yatay/dikey görünmesine takılmadan içeriği dikkatlice "
+    "incele ve ona göre isim üret."
+)
 
 RENAME_PROMPT = (
     "Bu belge resmi bir kurum evrakı, bir şirkete ait doküman veya şahsi bir belgedir. "
@@ -107,15 +122,16 @@ def jet_rename_pdf(file_id: str) -> str:
         path, original_filename, _ = get_pdf_info(file_id)
 
         # 2. Extract only the first page into a temporary PDF to save tokens/time
-        temp_pdf_path = _extract_first_page(path)
+        temp_pdf_path, is_landscape = _extract_first_page(path)
 
         # 3. Upload the temporary PDF to Gemini
         gemini_file = client.files.upload(file=temp_pdf_path, config={"mime_type": "application/pdf"})
 
         # 4. Generate content
+        prompt = RENAME_PROMPT + LANDSCAPE_HINT if is_landscape else RENAME_PROMPT
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=[gemini_file, RENAME_PROMPT]
+            contents=[gemini_file, prompt]
         )
 
         new_name = _clean_ai_name(response.text.strip())
@@ -174,12 +190,12 @@ def jet_rename_pdf_batch(file_ids: list[str]) -> dict:
 
         def _prepare_one(file_id: str):
             path, original_filename, _ = get_pdf_info(file_id)
-            temp_pdf_path = _extract_first_page(path)
+            temp_pdf_path, is_landscape = _extract_first_page(path)
             temp_files.append(temp_pdf_path)
 
             gemini_file = client.files.upload(file=temp_pdf_path, config={"mime_type": "application/pdf"})
             uploaded_files.append(gemini_file)
-            return original_filename, gemini_file
+            return original_filename, gemini_file, is_landscape
 
         # 1. Prepare all files (first-page extraction + Gemini upload) in parallel
         contents = []
@@ -188,9 +204,12 @@ def jet_rename_pdf_batch(file_ids: list[str]) -> dict:
             future_to_id = {executor.submit(_prepare_one, fid): fid for fid in file_ids}
             for future, file_id in future_to_id.items():
                 try:
-                    original_filename, gemini_file = future.result()
+                    original_filename, gemini_file, is_landscape = future.result()
                     file_info_map[file_id] = {"original_filename": original_filename}
-                    contents.append(f"Document ID: {file_id}")
+                    marker = f"Document ID: {file_id}"
+                    if is_landscape:
+                        marker += LANDSCAPE_HINT
+                    contents.append(marker)
                     contents.append(gemini_file)
                 except Exception as e:
                     log_ai_error(file_id, f"Failed to prepare batch file: {e}")
