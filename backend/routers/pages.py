@@ -1,8 +1,8 @@
 """
-Page render endpoint — GET /page/{pdf_id}/{page_number}
-Returns page image as PNG.
+PDF source endpoint — GET /pdf-source/{pdf_id}
+Serves the raw PDF bytes so the browser can render pages itself (pdf.js)
+instead of the server rendering per-page PNGs.
 """
-import asyncio
 import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -12,26 +12,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Limit concurrent PDF rendering tasks to prevent memory/IO exhaustion
-# especially with huge files (1.5GB) and rapid scrolling.
-RENDER_SEMAPHORE = asyncio.Semaphore(10)
 
-@router.get("/page/{pdf_id}/{page_number}")
-async def get_page_image(pdf_id: str, page_number: int):
-    """Returns the specified page as PNG."""
-    async with RENDER_SEMAPHORE:
-        try:
-            # Run the synchronous render_page in a threadpool
-            png_path = await asyncio.to_thread(pdf_service.render_page, pdf_id, page_number)
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="PDF not found.")
-        except IndexError:
-            raise HTTPException(status_code=404, detail="Page not found.")
-        except Exception as e:
-            logger.exception(f"Page render error for pdf_id={pdf_id} page={page_number}")
-            raise HTTPException(status_code=500, detail="Page render error.")
+@router.get("/pdf-source/{pdf_id}")
+def get_pdf_source(pdf_id: str):
+    """Returns the raw PDF file for pdf_id (original upload or batch output)."""
+    try:
+        path, _, _ = pdf_service.get_pdf_info(pdf_id)
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(status_code=404, detail="PDF not found.")
+    except Exception:
+        logger.exception(f"Failed to resolve PDF source for pdf_id={pdf_id}")
+        raise HTTPException(status_code=500, detail="Could not load PDF.")
 
-    # Content at this URL can change after a Batch Mode Update rewrites the underlying
-    # PDF (same pdf_id/page_number, new bytes) — no-cache forces revalidation (a cheap
-    # conditional request) instead of the browser silently reusing a stale thumbnail.
-    return FileResponse(path=str(png_path), media_type="image/png", headers={"Cache-Control": "no-cache"})
+    # Batch Mode Update can rewrite this same pdf_id's bytes in place — no-cache
+    # forces revalidation instead of the browser/pdf.js silently reusing stale content.
+    return FileResponse(path=str(path), media_type="application/pdf", headers={"Cache-Control": "no-cache"})

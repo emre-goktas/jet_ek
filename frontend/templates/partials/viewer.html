@@ -39,12 +39,12 @@
       </div>
     </div>
 
-    <img
-      src="/page/{{ pdf_id }}/{{ i }}"
-      alt="Sayfa {{ i + 1 }}"
+    <canvas
       class="page-img"
-      loading="lazy"
-    />
+      data-pdf-id="{{ pdf_id }}"
+      data-page-index="{{ i }}"
+      aria-label="Sayfa {{ i + 1 }}"
+    ></canvas>
 
     <div class="restore-overlay" onclick="restorePage(event, this.closest('.page-card'))" title="Geri yükle">
       <span class="text-white text-xs font-bold px-2 py-1 bg-gray-900 rounded bg-opacity-80">Geri Yükle</span>

@@ -126,40 +126,6 @@ def _src_path(pdf_id: str) -> Path:
         raise FileNotFoundError(f"PDF not found: {pdf_id}")
 
 
-def render_page(pdf_id: str, page_num: int, dpi: int = 120) -> Path:
-    """Renders the specified page as PNG, caches it on disk, and returns the file path.
-    The result is stored in STORAGE_DIR.
-
-    Args:
-        pdf_id: Source PDF ID
-        page_num: 0-based page number
-        dpi: Render resolution (default 120)
-
-    Returns:
-        Path object of the created or existing PNG file
-    """
-    out_path = STORAGE_DIR / f"{pdf_id}_page_{page_num}_{dpi}.png"
-    if out_path.exists():
-        return out_path
-
-    path = _src_path(pdf_id)
-
-    with lock_file(path):
-        doc = pymupdf.open(str(path))
-        try:
-            page = doc[page_num]
-            mat = pymupdf.Matrix(dpi / 72, dpi / 72)
-            pix = page.get_pixmap(matrix=mat, alpha=False)
-            png_bytes = pix.tobytes("png")
-
-            with open(out_path, "wb") as f:
-                f.write(png_bytes)
-        finally:
-            doc.close()
-
-    return out_path
-
-
 def _build_pdf_from_pages(pages: list[dict]) -> "pymupdf.Document":
     """Assembles a new in-memory document from an ordered page list, each dict
     shaped {"pdf_id": "id", "page_idx": 0, "rotation": 90}. Opens each unique
@@ -282,11 +248,6 @@ def update_pages(file_id: str, pages: list[dict]) -> int:
             if tmp_name:
                 Path(tmp_name).unlink(missing_ok=True)
             raise
-
-    # render_page() returns a cached PNG unconditionally if one already exists on
-    # disk, so stale thumbnails from the pre-update content/order must be dropped.
-    for stale_png in STORAGE_DIR.glob(f"{file_id}_page_*.png"):
-        stale_png.unlink(missing_ok=True)
 
     return actual_count
 

@@ -30,7 +30,7 @@ async def cleanup_old_files():
     while True:
         try:
             now = time.time()
-            for p in itertools.chain(STORAGE_DIR.glob("*.pdf"), STORAGE_DIR.glob("*.png"), STORAGE_DIR.glob("*.json")):
+            for p in itertools.chain(STORAGE_DIR.glob("*.pdf"), STORAGE_DIR.glob("*.json")):
                 try:
                     if now - p.stat().st_mtime > 3600:
                         if not is_file_locked(p):
