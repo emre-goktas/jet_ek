@@ -18,5 +18,7 @@ uvloop==0.22.1
 watchfiles==1.1.1
 websockets==16.0
 google-genai
+google-auth==2.55.1
+itsdangerous==2.2.0
 python-dotenv
 slowapi==0.1.10

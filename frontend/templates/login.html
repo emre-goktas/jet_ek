@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JETEK — Giriş</title>
+  <link rel="icon" type="image/jpeg" href="/static/icon.jpg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#eff6ff', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+
+<body class="bg-gray-950 text-gray-100 h-screen flex items-center justify-center font-sans px-4">
+
+  <div class="bg-gray-900 border border-gray-800 rounded-2xl p-10 flex flex-col items-center gap-6 shadow-2xl w-full max-w-sm">
+    <div class="flex items-center gap-2">
+      <div class="relative flex items-center justify-center bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg p-1.5 shadow-[0_0_15px_rgba(34,211,238,0.4)]">
+        <svg class="w-5 h-5 text-gray-900 translate-x-0.5 -translate-y-0.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+          <path d="M22 2L11 13"></path>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-black tracking-widest italic">
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-blue-600">JET</span><span class="text-gray-100">EK</span>
+      </h1>
+    </div>
+
+    <p class="text-sm text-gray-400 text-center">Devam etmek için Google hesabınızla giriş yapın.</p>
+
+    <div id="g_id_onload"
+      data-client_id="{{ google_client_id }}"
+      data-callback="handleGoogleCredential"
+      data-auto_prompt="false">
+    </div>
+    <div class="g_id_signin"
+      data-type="standard"
+      data-theme="filled_black"
+      data-size="large"
+      data-shape="pill"
+      data-text="signin_with"
+      data-locale="tr">
+    </div>
+
+    <p id="login-error" class="text-xs text-red-400 text-center hidden"></p>
+  </div>
+
+  <script>
+    async function handleGoogleCredential(response) {
+      const errEl = document.getElementById('login-error');
+      errEl.classList.add('hidden');
+      try {
+        const res = await fetch('/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: response.credential }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          errEl.textContent = data.detail || 'Giriş başarısız oldu.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        window.location.href = data.redirect || '/';
+      } catch (e) {
+        errEl.textContent = 'Bağlantı hatası.';
+        errEl.classList.remove('hidden');
+      }
+    }
+  </script>
+</body>
+
+</html>

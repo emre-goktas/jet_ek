@@ -4,19 +4,24 @@ FastAPI application — PDF Regulator
 from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, Depends
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import asyncio
 import itertools
 import time
 import logging
 
+from dotenv import load_dotenv
+load_dotenv()  # explicit here (not just relying on ai_service's import-time side effect)
+# so every module — auth_service included — can trust os.environ regardless of import order.
+
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from backend.routers import upload, pages, extract, download, templates as templates_router, ai
+from backend.routers import upload, pages, extract, download, templates as templates_router, ai, auth
 from backend.services.pdf_service import STORAGE_DIR, is_file_locked, secure_delete
+from backend.services import auth_service
 from backend.templating import templates
 from backend.rate_limit import limiter
 
@@ -102,16 +107,34 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # Static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# Every route that touches a user's document requires a session once auth is
+# configured (GOOGLE_CLIENT_ID + SESSION_SECRET_KEY in .env) — see auth_service.
+# Until then this list is empty and behavior is unchanged from before auth existed.
+if auth_service.is_auth_enabled():
+    _auth_dependency = [Depends(auth_service.get_current_user)]
+else:
+    logger.warning(
+        "GOOGLE_CLIENT_ID / SESSION_SECRET_KEY not set — authentication is DISABLED, "
+        "all routes are open. Set both in .env to require Google Sign-In."
+    )
+    _auth_dependency = []
+
 # Register routers
-app.include_router(upload.router)
-app.include_router(pages.router)
-app.include_router(extract.router)
-app.include_router(download.router)
-app.include_router(templates_router.router)
-app.include_router(ai.router, prefix="/ai")
+app.include_router(auth.router)
+app.include_router(upload.router, dependencies=_auth_dependency)
+app.include_router(pages.router, dependencies=_auth_dependency)
+app.include_router(extract.router, dependencies=_auth_dependency)
+app.include_router(download.router, dependencies=_auth_dependency)
+app.include_router(templates_router.router)  # public: template metadata only, no user documents
+app.include_router(ai.router, prefix="/ai", dependencies=_auth_dependency)
 
 
 @app.get("/")
 async def index(request: Request):
-    """Home page."""
-    return templates.TemplateResponse(request=request, name="index.html", context={"request": request})
+    """Home page — redirects to /login if auth is enabled and there's no valid session."""
+    user = None
+    if auth_service.is_auth_enabled():
+        user = auth_service.get_current_user_optional(request)
+        if user is None:
+            return RedirectResponse(url="/login")
+    return templates.TemplateResponse(request=request, name="index.html", context={"request": request, "user": user})

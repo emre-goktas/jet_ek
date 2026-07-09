@@ -74,6 +74,20 @@
       <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-blue-600">JET</span>
       <span class="text-gray-100">EK</span>
     </h1>
+
+    {% if user %}
+    <div class="ml-auto flex items-center gap-2 relative z-10 shrink-0">
+      {% if user.picture %}
+      <img src="{{ user.picture }}" alt="" class="w-7 h-7 rounded-full border border-gray-700" referrerpolicy="no-referrer">
+      {% endif %}
+      <span class="hidden sm:inline text-sm text-gray-300 max-w-[10rem] truncate">{{ user.name }}</span>
+      <button onclick="logout()" class="p-1.5 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors" title="Çıkış yap" aria-label="Çıkış yap">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+      </button>
+    </div>
+    {% endif %}
   </header>
 
   <!-- MAIN: Sol Panel + PDF Viewer -->
@@ -412,6 +426,16 @@
     // and up, so this toggle only has a visible effect below that width.
     function toggleSidebar() {
       document.body.classList.toggle('sidebar-open');
+    }
+
+    async function logout() {
+      try {
+        const res = await fetch('/auth/logout', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        window.location.href = data.redirect || '/login';
+      } catch (e) {
+        window.location.href = '/login';
+      }
     }
 
     function handleDrop(e) {
