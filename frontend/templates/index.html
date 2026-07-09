@@ -294,19 +294,24 @@
                 <button type="button" id="preview-batch-next-btn" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none disabled:hover:text-gray-400" onmousedown="event.preventDefault();" onclick="previewNextBatch()" title="Sonraki Grup (Alt + Aşağı)"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path></svg></button>
             </div>
             <div class="w-full relative">
-                <textarea id="custom-filename" rows="3" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-6 py-4 text-white text-sm font-medium focus:outline-none focus:border-blue-500 transition-colors shadow-inner resize-none" placeholder="belge ismini buraya yazınız" autocomplete="off"></textarea>
+                <textarea id="custom-filename" rows="3" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-6 py-4 text-white text-sm font-medium focus:outline-none focus:border-blue-500 transition-colors shadow-inner resize-none" placeholder="belge ismini buraya yazınız" autocomplete="off" oninput="scheduleRenameAutoSave()"></textarea>
             </div>
           </div>
           <div class="flex justify-center gap-4 w-full mt-2">
             <button
               class="flex-1 px-5 py-3 text-base bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl border border-gray-700 transition-colors font-medium"
+              onclick="previewPrevBatch()">
+              Önceki Ek
+            </button>
+            <button
+              class="px-5 py-3 text-base bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl border border-gray-700 transition-colors font-medium"
               onclick="closeNamingModal()">
-              İptal
+              Kapat
             </button>
             <button
               class="flex-1 px-5 py-3 text-base bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/30 transition-colors"
-              onclick="proceedToExtract()">
-              İleri
+              onclick="previewNextBatch()">
+              Sonraki Ek
             </button>
           </div>
       </div>
@@ -781,9 +786,44 @@
     }
 
     function closeNamingModal() {
+      flushRenameAutoSave(); // fire-and-forget — don't make closing wait on the network
       const m = document.getElementById('naming-modal');
       if(m) m.classList.remove('active');
       document.body.classList.remove('modal-open');
+    }
+
+    // ─── Rename modal auto-save ──────────────────────────────────────────
+    // The modal's own prev/next buttons use onmousedown="event.preventDefault()"
+    // (so clicking them doesn't yank focus/cursor out of the textarea while
+    // typing), which as a side effect also suppresses the textarea's blur —
+    // so nothing here can rely on a blur/onchange handler the way Batch
+    // Mode's grid-view rename input does. Instead: a short debounce saves
+    // while the user is still typing (so nothing is lost even if they just
+    // walk away), and every way of leaving a batch (nav buttons, Alt+Up/Down,
+    // Kapat) explicitly flushes first so there's never a race between "still
+    // debouncing" and "already switched to a different file_id".
+    let renameAutoSaveTimer = null;
+    let renameAutoSaveLastSent = {};
+
+    function getTrimmedCustomFilename() {
+      const el = document.getElementById('custom-filename');
+      return el ? el.value.replace(/[\r\n]+/g, ' ').trim() : '';
+    }
+
+    function scheduleRenameAutoSave() {
+      if (!renamingFileId) return;
+      clearTimeout(renameAutoSaveTimer);
+      renameAutoSaveTimer = setTimeout(flushRenameAutoSave, 700);
+    }
+
+    async function flushRenameAutoSave() {
+      clearTimeout(renameAutoSaveTimer);
+      renameAutoSaveTimer = null;
+      if (!renamingFileId) return;
+      const value = getTrimmedCustomFilename();
+      if (!value || renameAutoSaveLastSent[renamingFileId] === value) return;
+      renameAutoSaveLastSent[renamingFileId] = value;
+      await submitRename(renamingFileId, value);
     }
 
     function doExtract() {
@@ -906,7 +946,11 @@
       updateBatchPreviewUI();
 
       const input = document.getElementById('custom-filename');
-      input.value = currentName.replace(/\.pdf$/i, '');
+      const baseName = currentName.replace(/\.pdf$/i, '');
+      input.value = baseName;
+      // Seed with the name already on disk so an unmodified switch away
+      // from this batch doesn't fire a redundant no-op save.
+      renameAutoSaveLastSent[fileId] = baseName;
     }
 
     function openRenameModal(fileId, currentName, pageCount = 1) {
@@ -921,7 +965,11 @@
 
     // Switches the rename preview to the previous/next generated PDF ("batch") in the
     // left panel, wrapping around. Independent of the main grid's Batch Mode navigation.
-    function previewPrevBatch() {
+    // Always flushes the pending name first — even when there's only one batch and
+    // there's nowhere to navigate to — so "type a name, hit Sonraki/Önceki Ek" never
+    // silently drops the edit.
+    async function previewPrevBatch() {
+      await flushRenameAutoSave();
       const queueButtons = getRenameQueueButtons();
       if (queueButtons.length <= 1) return;
       let idx = queueButtons.findIndex(btn => btn.dataset.fileId === renamingFileId);
@@ -930,7 +978,8 @@
       switchRenameModalToQueueButton(queueButtons[idx]);
     }
 
-    function previewNextBatch() {
+    async function previewNextBatch() {
+      await flushRenameAutoSave();
       const queueButtons = getRenameQueueButtons();
       if (queueButtons.length <= 1) return;
       let idx = queueButtons.findIndex(btn => btn.dataset.fileId === renamingFileId);
@@ -1182,10 +1231,15 @@
       } catch (e) { return null; }
     }
 
-    function showPreview(card) {
+    async function showPreview(card) {
       const canvas = card.querySelector('.page-img');
       const modalImg = document.getElementById('preview-img');
       const modal = document.getElementById('preview-modal');
+      // The thumbnail canvas renders lazily (IntersectionObserver) — if the
+      // user clicks right as a card scrolls into view, the render may still
+      // be in flight. renderPageCanvas no-ops once already rendered, so this
+      // is just "make sure it's actually done" before snapshotting it.
+      await renderPageCanvas(canvas);
       modalImg.src = canvas.toDataURL('image/png');
       modalImg.style.transform = canvas.style.transform;
       modal.classList.add('active');
@@ -1446,7 +1500,13 @@
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    proceedToExtract(); // Submit when hitting enter
+                    // Mirrors the "Sonraki Ek" button — saves the current name and
+                    // advances, consistent with what the primary (blue) button does.
+                    if (renamingFileId) {
+                        previewNextBatch();
+                    } else {
+                        proceedToExtract(); // legacy new-extraction naming path
+                    }
                 }
             });
         }

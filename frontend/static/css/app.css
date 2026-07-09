@@ -59,8 +59,11 @@
   width: 100%;
   height: auto;
   aspect-ratio: 1 / 1.414;
-  /* A4 size simulation */
-  object-fit: cover;
+  /* A4-shaped placeholder box — most pages are close to this, but not all
+     (landscape scans, letterhead/logo pages, US Letter, wide tables). Using
+     "contain" instead of "cover" means those get letterboxed inside the box
+     instead of having their edges cropped off. */
+  object-fit: contain;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   display: block;

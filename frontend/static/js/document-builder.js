@@ -384,6 +384,128 @@ function fillPrenumberedRowsTable(xmlDoc, table, template, filesData) {
   }
 }
 
+/** Sets (or adds) a paragraph's <w:jc> alignment — the real, text-length-
+ * independent kind, as opposed to the leading-space padding trick some of
+ * these templates use for "alignment" (see whole_paragraph below). */
+function setParagraphAlignment(xmlDoc, p, align) {
+  let pPr = directChildren(p, 'pPr')[0];
+  if (!pPr) {
+    pPr = wEl(xmlDoc, 'pPr');
+    p.insertBefore(pPr, p.firstChild);
+  }
+  let jc = directChildren(pPr, 'jc')[0];
+  if (!jc) {
+    jc = wEl(xmlDoc, 'jc');
+    pPr.appendChild(jc);
+  }
+  jc.setAttribute('w:val', align);
+}
+
+/**
+ * Applies every configured {search, replace} pair anywhere in the document —
+ * body paragraphs and table cells alike (e.g. saglık_bk_teftis's TOPLAM-row
+ * "000", sgk_denetmen's "() Sosyal Güvenlik İl Müdürlüğü" header). Works
+ * per-paragraph rather than per-node: most placeholders live in a single
+ * <w:t> and get a plain in-place substring replace (preserves every sibling
+ * run/tab/formatting untouched), but a few templates split one placeholder
+ * across runs (saglık_bk_teftis's "……………….." signature line is "……………" in
+ * one run and ".." in the next) — for exactly those paragraphs, and only
+ * those, all of the paragraph's text is merged into its first node before
+ * the substring replace, so the match can't fall through the gap between
+ * runs. Paragraphs no placeholder touches are never merged, so their
+ * original run/formatting structure survives untouched.
+ *
+ * A placeholder can also set `whole_paragraph: true` (optionally with
+ * `center: true`): instead of substituting just the matched substring, the
+ * paragraph's *entire* text is replaced with the filled value. Needed where
+ * the template "aligns" text by padding it with a fixed run of leading
+ * spaces rather than real paragraph alignment (saglık_bk_teftis's signature
+ * name/title lines) — substituting only the placeholder portion would leave
+ * that padding in place, and since the name and title are different lengths
+ * than what the padding was originally sized for, they'd land at different
+ * horizontal offsets instead of sharing a center line. Wiping the padding
+ * and applying true `<w:jc w:val="center"/>` keeps both lines centered
+ * relative to each other regardless of how long the name/title text is.
+ */
+function applyTextPlaceholders(xmlDoc, placeholders, vars) {
+  if (!placeholders || placeholders.length === 0) return;
+
+  const paragraphs = Array.from(xmlDoc.getElementsByTagNameNS(DOCX_W_NS, 'p'));
+  for (const p of paragraphs) {
+    const tNodes = Array.from(p.getElementsByTagNameNS(DOCX_W_NS, 't'));
+    if (tNodes.length === 0) continue;
+    const fullText = tNodes.map((t) => t.textContent).join('');
+
+    const matching = placeholders.filter((ph) => fullText.includes(ph.search));
+    if (matching.length === 0) continue;
+
+    const wholeParagraphPh = matching.find((ph) => ph.whole_paragraph);
+    if (wholeParagraphPh) {
+      const replacement = fillTemplateString(wholeParagraphPh.replace, vars);
+      // Rebuilt as one fresh, explicitly-formatted run (Times New Roman, not
+      // bold) rather than reusing whichever original run survives — the
+      // leading-space "padding" run these templates use for pseudo-alignment
+      // sometimes carries its own stray formatting (e.g. saglık_bk_teftis's
+      // title line padding was bold even though the visible label wasn't).
+      directChildren(p, 'r').forEach((r) => p.removeChild(r));
+      const r = wEl(xmlDoc, 'r');
+      const rPr = wEl(xmlDoc, 'rPr');
+      const rFonts = wEl(xmlDoc, 'rFonts');
+      rFonts.setAttribute('w:ascii', 'Times New Roman');
+      rFonts.setAttribute('w:hAnsi', 'Times New Roman');
+      rPr.appendChild(rFonts);
+      const sz = wEl(xmlDoc, 'sz');
+      sz.setAttribute('w:val', '24');
+      rPr.appendChild(sz);
+      r.appendChild(rPr);
+      const t = wEl(xmlDoc, 't');
+      t.setAttribute('xml:space', 'preserve');
+      t.textContent = replacement;
+      r.appendChild(t);
+      p.appendChild(r);
+      if (wholeParagraphPh.center) setParagraphAlignment(xmlDoc, p, 'center');
+      continue;
+    }
+
+    const needsMerge = matching.some((ph) => !tNodes.some((t) => t.textContent.includes(ph.search)));
+    if (needsMerge) {
+      tNodes[0].textContent = fullText;
+      for (let i = 1; i < tNodes.length; i++) tNodes[i].textContent = '';
+    }
+
+    for (const ph of matching) {
+      const replacement = fillTemplateString(ph.replace, vars);
+      for (const t of tNodes) {
+        if (t.textContent.includes(ph.search)) {
+          t.textContent = t.textContent.split(ph.search).join(replacement);
+        }
+      }
+    }
+  }
+}
+
+/** Fills a template's separate 2x2 "imza" (signature) table — sgk_müfettis
+ * and sgk_denetmen both have one after the main data table, empty by
+ * default: row/col [0,1] gets the signer's name, [1,1] gets their title. */
+function fillSignatureTable(xmlDoc, tables, config, vars) {
+  const tbl = tables[config.table_index];
+  if (!tbl) return;
+  const rows = directChildren(tbl, 'tr');
+
+  const fillCell = (rowCol, text) => {
+    if (!rowCol) return;
+    const [r, c] = rowCol;
+    const row = rows[r];
+    if (!row) return;
+    const cell = directChildren(row, 'tc')[c];
+    if (!cell) return;
+    setCellText(xmlDoc, cell, text, 'center', false);
+  };
+
+  fillCell(config.name_cell, vars.isim_soyisim);
+  fillCell(config.title_cell, vars.unvan);
+}
+
 /**
  * Loads an existing .docx template (all four institutions' templates are
  * real files now — see templates.json), fills in its first table according
@@ -422,6 +544,9 @@ async function buildDocxFromExistingTemplate(templateBytes, filesData, template,
     fillToplamRowTable(xmlDoc, table, template, filesData, totalPages);
   }
 
+  const today = new Date();
+  const gununTarihi = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
+
   const vars = {
     baslangic_no: startNum,
     bitis_no: endNum,
@@ -430,19 +555,15 @@ async function buildDocxFromExistingTemplate(templateBytes, filesData, template,
     ek_sayisi: ekSayisi,
     ek_sayisi_yazi: numberToTurkishWords(ekSayisi),
     il: (extraVars && extraVars.il) || '',
+    gunun_tarihi: gununTarihi,
+    isim_soyisim: (extraVars && extraVars.isimSoyisim) || '',
+    unvan: (extraVars && extraVars.unvan) || '',
   };
 
-  // Applies everywhere in the document (body paragraphs *and* table cells —
-  // unlike the old sgk-only implementation, which only scanned body
-  // paragraphs since that was the only place sgk_müfettis needed it).
-  const allTextNodes = Array.from(xmlDoc.getElementsByTagNameNS(DOCX_W_NS, 't'));
-  for (const ph of (template.text_placeholders || [])) {
-    const replacement = fillTemplateString(ph.replace, vars);
-    for (const t of allTextNodes) {
-      if (t.textContent.includes(ph.search)) {
-        t.textContent = t.textContent.split(ph.search).join(replacement);
-      }
-    }
+  applyTextPlaceholders(xmlDoc, template.text_placeholders, vars);
+
+  if (template.signature_table) {
+    fillSignatureTable(xmlDoc, tables, template.signature_table, vars);
   }
 
   const serializer = new XMLSerializer();
@@ -452,30 +573,35 @@ async function buildDocxFromExistingTemplate(templateBytes, filesData, template,
   return fflate.zipSync(zipEntries, { level: 6 });
 }
 
-/** Resolves which template + extra fill-in values (currently just "il") to
- * use for the current user: their saved profile if they have one, else the
- * first available template as a defensive fallback (the backend normally
- * redirects to /onboarding before a profile-less user can reach the app at
- * all, so this fallback should rarely if ever actually fire). */
+/** Resolves which template + extra fill-in values (il/name/title) to use for
+ * the current user: their saved profile if they have one, else the first
+ * available template as a defensive fallback (the backend normally redirects
+ * to /onboarding before a profile-less user can reach the app at all, so
+ * this fallback should rarely if ever actually fire). */
 async function resolveUserTemplateChoice() {
   const meRes = await fetch('/api/me');
   if (meRes.ok) {
     const me = await meRes.json();
     if (me.profile && me.profile.template_id) {
-      return { templateId: me.profile.template_id, il: me.profile.il };
+      return {
+        templateId: me.profile.template_id,
+        il: me.profile.il,
+        isimSoyisim: me.profile.name || '',
+        unvan: me.profile.title || '',
+      };
     }
   }
   const listRes = await fetch('/api/templates');
   if (!listRes.ok) throw new Error('Failed to load template list.');
   const list = await listRes.json();
   if (!list.length) throw new Error('No templates available.');
-  return { templateId: list[0].id, il: null };
+  return { templateId: list[0].id, il: null, isimSoyisim: '', unvan: '' };
 }
 
 /** Fetches the current user's chosen template's full config + source .docx
  * bytes and builds the Word index list. */
 async function buildDocxIndex(filesData) {
-  const { templateId, il } = await resolveUserTemplateChoice();
+  const { templateId, il, isimSoyisim, unvan } = await resolveUserTemplateChoice();
 
   const configRes = await fetch(`/api/templates/${encodeURIComponent(templateId)}`);
   if (!configRes.ok) throw new Error('Failed to load template config.');
@@ -484,7 +610,7 @@ async function buildDocxIndex(filesData) {
   const fileRes = await fetch(`/api/templates/${encodeURIComponent(template.id)}/file`);
   if (!fileRes.ok) throw new Error('Failed to load template file.');
   const templateBytes = await fileRes.arrayBuffer();
-  return buildDocxFromExistingTemplate(templateBytes, filesData, template, { il });
+  return buildDocxFromExistingTemplate(templateBytes, filesData, template, { il, isimSoyisim, unvan });
 }
 
 // ─── ZIP assembly + download ────────────────────────────────────────────
