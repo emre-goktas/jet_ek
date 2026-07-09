@@ -1,20 +1,19 @@
 """
 Download endpoint — GET /download/{file_id}
 Serves the generated PDF file as a download.
+
+ZIP packaging and the Word index list used to be built here too, but that
+generation now happens client-side (frontend/static/js/document-builder.js),
+using /pdf-source/{id} for the PDF bytes and /api/templates/* for the
+template config + file. This router only serves single files.
 """
-import zipfile
-import io
-import re
 import logging
-# pyrefly: ignore [missing-import]
-import pymupdf
 # pyrefly: ignore [missing-import]
 from fastapi import APIRouter, HTTPException
 # pyrefly: ignore [missing-import]
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 
 from backend.services import pdf_service
-from backend.services.docx_service import generate_docx_from_template
 
 logger = logging.getLogger(__name__)
 
@@ -38,138 +37,4 @@ def download_pdf(file_id: str, ek_no: int = None):
         path=str(path),
         media_type="application/pdf",
         filename=filename,
-    )
-
-
-def _parse_file_ids(file_ids: str) -> list[str]:
-    if not file_ids:
-        raise HTTPException(status_code=400, detail="No files specified.")
-    ids = [fid.strip() for fid in file_ids.split(",") if fid.strip()]
-    if not ids:
-        raise HTTPException(status_code=400, detail="No valid file IDs specified.")
-    return ids
-
-
-def _gather_files_data(ids: list[str]) -> list[dict]:
-    """Resolves each file_id to its path/filename/page-count/mahiyet, assigns a
-    sequential ek_no to any files that don't already have one (from their filename
-    or custom_name metadata), and returns them sorted by ek_no."""
-    files_data = []
-
-    for file_id in ids:
-        try:
-            path = pdf_service.get_output_path(file_id)
-            filename = path.name.split("_", 1)[1] if "_" in path.name else path.name
-
-            doc = pymupdf.open(str(path))
-            page_count = len(doc)
-            doc.close()
-
-            metadata = pdf_service.get_metadata(file_id)
-            if "custom_name" in metadata:
-                mahiyet = metadata["custom_name"].strip()
-                ek_no = None
-            else:
-                m = re.match(r"^(\d+)_(.+)\.pdf$", filename, re.IGNORECASE)
-                if m:
-                    ek_no = int(m.group(1))
-                    mahiyet = m.group(2)
-                else:
-                    mahiyet = filename.rsplit(".", 1)[0]
-                    ek_no = None
-
-            files_data.append({
-                "file_id": file_id,
-                "path": path,
-                "filename": filename,
-                "ek_no": ek_no,
-                "mahiyet": mahiyet,
-                "page_count": page_count
-            })
-        except Exception:
-            # If a file doesn't exist or is not valid, skip it
-            continue
-
-    if not files_data:
-        raise HTTPException(status_code=400, detail="No valid files found to package.")
-
-    # Assign sequential numbers for files missing an ek_no, then sort
-    assigned_num = 1
-    for f in files_data:
-        if f["ek_no"] is None:
-            f["ek_no"] = assigned_num
-        assigned_num = max(assigned_num, f["ek_no"] + 1)
-
-    files_data.sort(key=lambda x: x["ek_no"])
-    return files_data
-
-
-def _add_docx_index(zip_file: zipfile.ZipFile, files_data: list[dict]) -> None:
-    try:
-        docx_bytes = generate_docx_from_template(files_data)
-        zip_file.writestr("Ek Belgeler Listesi.docx", docx_bytes)
-    except Exception as e:
-        # If DOCX generation fails, log it but don't break the ZIP download
-        logger.error(f"Failed to generate Word index: {e}")
-
-
-@router.get("/download-zip")
-def download_zip(file_ids: str):
-    """Downloads a ZIP containing the PDFs specified by comma-separated file_ids along with an index list Word file."""
-    ids = _parse_file_ids(file_ids)
-    files_data = _gather_files_data(ids)
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        # Add PDF files
-        for f in files_data:
-            zip_filename = f"{f['ek_no']:02d}_{f['filename']}"
-            zip_file.write(f["path"], arcname=zip_filename)
-
-        _add_docx_index(zip_file, files_data)
-
-    zip_buffer.seek(0)
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/x-zip-compressed",
-        headers={"Content-Disposition": "attachment; filename=jetek_files.zip"}
-    )
-
-
-@router.get("/download-zip-numbered")
-def download_zip_numbered(file_ids: str):
-    """Downloads a ZIP containing the PDFs with EK numbers stamped on each page."""
-    ids = _parse_file_ids(file_ids)
-    files_data = _gather_files_data(ids)
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for f in files_data:
-            try:
-                doc = pymupdf.open(str(f["path"]))
-                for i in range(len(doc)):
-                    page = doc[i]
-                    text = f"EK: {f['ek_no']}/{i+1}"
-                    # Add to top right corner (x=width-100, y=30)
-                    x = max(10, page.rect.width - 90)
-                    y = 30
-                    point = pymupdf.Point(x, y)
-                    page.insert_text(point, text, fontsize=12, color=(1, 0, 0), fontname="hebo")
-                pdf_bytes = doc.tobytes()
-                doc.close()
-                zip_filename = f"{f['ek_no']:02d}_{f['filename']}"
-                zip_file.writestr(zip_filename, pdf_bytes)
-            except Exception as e:
-                logger.error(f"Failed to stamp PDF {f['filename']}: {e}")
-                # Fallback to writing unmodified if stamping fails
-                zip_filename = f"{f['ek_no']:02d}_{f['filename']}"
-                zip_file.write(f["path"], arcname=zip_filename)
-
-        _add_docx_index(zip_file, files_data)
-
-    zip_buffer.seek(0)
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/x-zip-compressed",
-        headers={"Content-Disposition": "attachment; filename=jetek_files.zip"}
     )

@@ -57,6 +57,7 @@ def extract_pages(req: ExtractRequest, request: Request):
             "filename": filename,
             "label": label,
             "page_count": actual_count,
+            "custom_name": req.custom_name or "",
         },
     )
 
@@ -88,6 +89,7 @@ def rename_pdf(file_id: str, req: RenameRequest, request: Request):
             "filename": new_filename,
             "label": label,
             "page_count": page_count,
+            "custom_name": metadata.get("custom_name", ""),
         },
     )
 
@@ -113,6 +115,7 @@ def update_pdf(file_id: str, req: UpdateRequest, request: Request):
         raise HTTPException(status_code=500, detail="Update failed.")
 
     label = f"{page_count} Pages" if page_count > 1 else "Page 1"
+    custom_name = pdf_service.get_metadata(file_id).get("custom_name", "")
 
     return templates.TemplateResponse(
         request=request,
@@ -123,5 +126,6 @@ def update_pdf(file_id: str, req: UpdateRequest, request: Request):
             "filename": filename,
             "label": label,
             "page_count": page_count,
+            "custom_name": custom_name,
         },
     )

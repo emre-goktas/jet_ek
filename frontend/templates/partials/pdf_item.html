@@ -1,7 +1,8 @@
 {#
   Partial: pdf_item.html
   Component added to the left panel for each generated PDF.
-  Jinja2 variables: file_id, filename, label
+  Jinja2 variables: file_id, filename, label, custom_name (optional, used by the
+  browser to rebuild the Word index list without a server round-trip)
 #}
 <div class="pdf-item">
   <div class="flex items-start gap-2">
@@ -17,6 +18,7 @@
   <div class="flex items-center gap-2 mt-2">
     <button
       data-file-id="{{ file_id }}"
+      data-custom-name="{{ custom_name | default('') }}"
       onclick="downloadSingleFile('{{ file_id }}', this)"
       class="download-btn flex-1 text-center"
     >

@@ -29,6 +29,15 @@
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   </script>
+  <!-- pdf-lib: görsel (jpeg/png) -> PDF dönüşümü ve EK numarası damgalama artık tarayıcıda -->
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <!-- fflate: ZIP paketleme (ve .docx dosyalarının kendisi de bir zip olduğu için sgk şablonunu
+       düzenlemek) tarayıcıda. Salt MIT lisanslı, bağımlılıksız — resmi evrak işleyen bu proje
+       için JSZip'in MIT/GPLv3 çift lisansından kaçınmak amacıyla tercih edildi. -->
+  <script src="https://unpkg.com/fflate@0.8.2/umd/index.js"></script>
+  <!-- docx: sıfırdan Word belgesi üretimi (şablon dosyası olmayan kurumlar) tarayıcıda -->
+  <script src="https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"></script>
+  <script src="/static/js/document-builder.js" defer></script>
   <style>
     @keyframes domino-jump {
       0% { transform: translateY(0); border-color: #1f2937; }
@@ -471,7 +480,7 @@
       let skipped = 0;
       let failed = 0;
       let success = 0;
-      
+
       for (let file of files) {
         current++;
         const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
@@ -479,8 +488,23 @@
           skipped++;
           continue;
         }
+
+        // JPEG/PNG are converted to PDF right here in the browser (pdf-lib) —
+        // only PDF/TIFF ever reach /upload now. TIFF still goes to the backend
+        // (fitz), since there's no browser-side TIFF decoder.
+        let uploadFile = file;
+        try {
+          showStatus(`⏳ ${file.name} hazırlanıyor (${current}/${total})...`, 'text-gray-400');
+          uploadFile = await maybeConvertToPdfBeforeUpload(file);
+        } catch (e) {
+          console.error('Image->PDF conversion failed:', file.name, e);
+          failed++;
+          showStatus(`✗ ${file.name}: ${e.message || 'dönüştürme hatası'}`, 'text-red-400');
+          continue;
+        }
+
         showStatus(`⏳ ${file.name} yükleniyor (${current}/${total})...`, 'text-gray-400');
-        const isOk = await sendFile(file);
+        const isOk = await sendFile(uploadFile);
         if (isOk) {
             success++;
         } else {
@@ -1166,22 +1190,14 @@
       }
     }
 
+    // ZIP + Word index packaging used to be GET /download-zip(-numbered); it's
+    // now built entirely in the browser — see frontend/static/js/document-builder.js.
     function downloadAllAsZip() {
-      const links = document.querySelectorAll('#output-list .download-btn');
-      if (links.length === 0) return;
-      const ids = Array.from(links).map(a => a.dataset.fileId);
-      
-      let url = `/download-zip?file_ids=${ids.join(',')}`;
-      window.location.href = url;
+      buildAndDownloadZip(false);
     }
 
     function downloadAllNumberedAsZip() {
-      const links = document.querySelectorAll('#output-list .download-btn');
-      if (links.length === 0) return;
-      let ids = Array.from(document.querySelectorAll('.download-btn')).map(btn => btn.dataset.fileId);
-      if (ids.length === 0) return;
-      let url = `/download-zip-numbered?file_ids=${ids.join(',')}`;
-      window.location.href = url;
+      buildAndDownloadZip(true);
     }
 
     async function runJetRenameAll() {

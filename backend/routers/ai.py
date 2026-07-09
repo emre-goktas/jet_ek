@@ -18,13 +18,14 @@ def jet_rename(file_id: str, request: Request):
     Returns the updated HTML for the left panel item.
     """
     try:
-        new_filename, label, page_count = jet_rename_pdf(file_id)
+        new_filename, label, page_count, custom_name = jet_rename_pdf(file_id)
         context = {
             "request": request,
             "file_id": file_id,
             "filename": new_filename,
             "label": label,
             "page_count": page_count,
+            "custom_name": custom_name,
         }
         return templates.TemplateResponse(request=request, name="partials/pdf_item.html", context=context)
     except Exception as e:
@@ -52,6 +53,7 @@ def jet_rename_batch(data: BatchRenameRequest, request: Request):
                 "filename": info["filename"],
                 "label": info["label"],
                 "page_count": info["page_count"],
+                "custom_name": info.get("custom_name", ""),
             }
             # Render template to string using Starlette's TemplateResponse body
             template_response = templates.TemplateResponse(request=request, name="partials/pdf_item.html", context=context)

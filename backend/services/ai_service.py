@@ -148,7 +148,7 @@ def jet_rename_pdf(file_id: str) -> str:
         # 6. Log the change
         log_ai_rename(file_id, original_filename, new_name)
 
-        return new_filename, label, page_count
+        return new_filename, label, page_count, metadata.get("custom_name", "")
 
     except Exception as e:
         import traceback
@@ -259,7 +259,8 @@ def jet_rename_pdf_batch(file_ids: list[str]) -> dict:
                 results[file_id] = {
                     "filename": new_filename,
                     "label": label,
-                    "page_count": page_count
+                    "page_count": page_count,
+                    "custom_name": metadata.get("custom_name", ""),
                 }
             except Exception as inner_e:
                 log_ai_error(file_id, f"Failed applying rename: {inner_e}")
