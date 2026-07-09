@@ -10,11 +10,27 @@
  *
  * The backend still owns storage and serves raw bytes (/pdf-source/{id},
  * /api/templates/*) — only the CPU-bound generation moved to the browser.
- * Uses pdf-lib, fflate and docx (all loaded as CDN globals in index.html).
+ * Uses pdf-lib and fflate (both loaded as CDN globals in index.html).
  * fflate (pure MIT, zero deps) is used instead of JSZip (dual MIT/GPLv3) —
  * this app handles official/legal documents, so the dependency license
- * surface is kept unambiguous on purpose.
+ * surface is kept unambiguous on purpose. All four institution templates
+ * (see templates.json) are real .docx files now, filled in by editing their
+ * raw OOXML in place — no from-scratch document builder is needed anymore.
  */
+
+// ─── Usage analytics (Faz 3 — see backend/services/db_service.py) ─────────
+
+/** Fire-and-forget usage event log. Never awaited by callers for its result
+ * and never throws — a broken analytics call must not interrupt the actual
+ * feature the user is using. No-ops cleanly (backend 401s) when auth isn't
+ * configured, same as every other authenticated endpoint. */
+function logEvent(eventType, metadata) {
+  fetch('/api/events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event_type: eventType, metadata: metadata || {} }),
+  }).catch((e) => console.warn('logEvent failed (non-fatal):', eventType, e));
+}
 
 // ─── Magic-byte detection (mirrors backend/services/preprocessor.py) ───────
 
@@ -267,16 +283,119 @@ function setCellText(xmlDoc, tcNode, text, align, bold) {
   p.appendChild(r);
 }
 
+/** Maps one file's data through a data_columns column-type definition to a
+ * {text, align} cell value — the same "ek_no/mahiyet/sayfa_sayisi/empty/
+ * constant" vocabulary templates.json has always used. */
+function cellValueFor(colDef, f) {
+  const ctype = colDef.type;
+  let text = '';
+  if (ctype === 'ek_no') text = f.ek_no;
+  else if (ctype === 'sayfa_sayisi') text = f.page_count;
+  else if (ctype === 'mahiyet') text = f.mahiyet;
+  else if (ctype === 'constant') text = colDef.value || '';
+  // 'empty' (or anything unrecognized) stays blank.
+  const align = (ctype === 'ek_no' || ctype === 'sayfa_sayisi' || ctype === 'constant') ? 'center' : 'left';
+  return { text, align };
+}
+
+/** Fills templates.json's {token} placeholders in a template string with
+ * computed values; unknown tokens are left as-is rather than dropped. */
+function fillTemplateString(str, vars) {
+  return str.replace(/\{(\w+)\}/g, (match, key) => (key in vars ? String(vars[key]) : match));
+}
+
 /**
- * "file_path" template mode: loads an existing .docx (e.g. sgk_template.docx),
- * finds its first table, replaces the placeholder data rows with one row per
- * file, fills in the TOPLAM page count, and substitutes the "( ) numaraları
- * altında ... ( ) sayfadan" paragraph placeholders. This is a direct port of
- * docx_service._generate_from_docx_template, operating on the raw OOXML
- * instead of python-docx, since no browser library edits existing .docx
- * tables in place.
+ * "toplam_row" table_mode: header row(s) + a handful of placeholder rows +
+ * a TOPLAM row last. Strips the placeholder rows, inserts one row per file
+ * before TOPLAM, and — if the template names a toplam_cell_column_type —
+ * fills in the TOPLAM row's page-count cell positionally (used when that
+ * cell starts out empty, e.g. sgk_müfettis; templates where it already
+ * carries placeholder text, e.g. saglık_bk_teftis's "000", use
+ * text_placeholders for that instead — see below).
  */
-async function buildDocxFromExistingTemplate(templateBytes, filesData) {
+function fillToplamRowTable(xmlDoc, table, template, filesData, totalPages) {
+  const rows = directChildren(table, 'tr');
+  if (rows.length === 0) throw new Error('Template table has no rows; expected at least a TOPLAM row.');
+
+  const toplamRow = rows[rows.length - 1];
+
+  if (template.toplam_cell_column_type) {
+    const colIdx = template.data_columns.findIndex((c) => c.type === template.toplam_cell_column_type);
+    const toplamCells = directChildren(toplamRow, 'tc');
+    if (colIdx !== -1 && toplamCells[colIdx]) {
+      setCellText(xmlDoc, toplamCells[colIdx], String(totalPages), 'center', false);
+    }
+  }
+
+  // Remove placeholder rows between the header row(s) and the TOPLAM row.
+  // header_row_count defaults to 1 (a single label row, e.g. sgk_müfettis);
+  // saglık_bk_teftis has 2 (a merged "Evrakın" row plus the Ek No/Tarihi/
+  // Sayısı/Sayfa Adedi sub-header row) and must keep both.
+  const headerRowCount = template.header_row_count || 1;
+  for (let i = rows.length - 2; i >= headerRowCount; i--) {
+    table.removeChild(rows[i]);
+  }
+
+  const tblGrid = directChildren(table, 'tblGrid')[0];
+  const gridColWidths = tblGrid
+    ? directChildren(tblGrid, 'gridCol').map((gc) => gc.getAttribute('w:w'))
+    : [];
+
+  for (const f of filesData) {
+    const cells = template.data_columns.map((colDef) => cellValueFor(colDef, f));
+    const tr = buildDataRow(xmlDoc, gridColWidths, cells);
+    table.insertBefore(tr, toplamRow);
+  }
+}
+
+/**
+ * "prenumbered_rows" table_mode: header row + N pre-printed blank rows (no
+ * TOPLAM row at all — sgk_denetmen's 12 numbered rows). Overwrites existing
+ * rows in place regardless of whatever placeholder content they start with
+ * (row position determines which file lands where, not the printed number),
+ * removes unused rows if there are fewer files than pre-built rows, and
+ * clones+appends new ones if there are more.
+ */
+function fillPrenumberedRowsTable(xmlDoc, table, template, filesData) {
+  const rows = directChildren(table, 'tr');
+  if (rows.length === 0) throw new Error('Template table has no header row.');
+  const dataRows = rows.slice(1);
+
+  const tblGrid = directChildren(table, 'tblGrid')[0];
+  const gridColWidths = tblGrid
+    ? directChildren(tblGrid, 'gridCol').map((gc) => gc.getAttribute('w:w'))
+    : [];
+
+  const n = filesData.length;
+  for (let i = 0; i < Math.min(n, dataRows.length); i++) {
+    const cells = directChildren(dataRows[i], 'tc');
+    template.data_columns.forEach((colDef, ci) => {
+      if (!cells[ci]) return;
+      const { text, align } = cellValueFor(colDef, filesData[i]);
+      setCellText(xmlDoc, cells[ci], String(text ?? ''), align, false);
+    });
+  }
+  for (let i = dataRows.length - 1; i >= n; i--) {
+    table.removeChild(dataRows[i]);
+  }
+  for (let i = dataRows.length; i < n; i++) {
+    const cells = template.data_columns.map((colDef) => cellValueFor(colDef, filesData[i]));
+    table.appendChild(buildDataRow(xmlDoc, gridColWidths, cells));
+  }
+}
+
+/**
+ * Loads an existing .docx template (all four institutions' templates are
+ * real files now — see templates.json), fills in its first table according
+ * to table_mode/data_columns, and substitutes every text_placeholders entry
+ * anywhere in the document (body paragraphs and table cells alike — e.g.
+ * saglık_bk_teftis's TOPLAM-row "000", sgk_denetmen's "Ankara" header and
+ * its "...... (...) ek," summary line). Direct port of the old backend's
+ * docx_service._generate_from_docx_template, generalized to be config-driven
+ * instead of hardcoded to one template's shape, operating on the raw OOXML
+ * since no browser library edits an existing .docx's tables in place.
+ */
+async function buildDocxFromExistingTemplate(templateBytes, filesData, template, extraVars) {
   const zipEntries = fflate.unzipSync(new Uint8Array(templateBytes));
   const docXmlBytes = zipEntries['word/document.xml'];
   if (!docXmlBytes) throw new Error('Invalid .docx template: word/document.xml missing.');
@@ -291,51 +410,38 @@ async function buildDocxFromExistingTemplate(templateBytes, filesData) {
   const startNum = filesData.length ? filesData[0].ek_no : 1;
   const endNum = filesData.length ? filesData[filesData.length - 1].ek_no : 1;
   const totalPages = filesData.reduce((sum, f) => sum + (f.page_count || 0), 0);
+  const ekSayisi = filesData.length;
 
   const tables = xmlDoc.getElementsByTagNameNS(DOCX_W_NS, 'tbl');
-  if (tables.length === 0) throw new Error('No templates available.');
+  if (tables.length === 0) throw new Error('Template has no table.');
   const table = tables[0];
-  const rows = directChildren(table, 'tr');
-  if (rows.length === 0) throw new Error('Template table has no rows; expected at least a TOPLAM row.');
 
-  const toplamRow = rows[rows.length - 1];
-  const toplamCells = directChildren(toplamRow, 'tc');
-  if (toplamCells.length > 2) {
-    setCellText(xmlDoc, toplamCells[2], String(totalPages), 'center', false);
+  if (template.table_mode === 'prenumbered_rows') {
+    fillPrenumberedRowsTable(xmlDoc, table, template, filesData);
+  } else {
+    fillToplamRowTable(xmlDoc, table, template, filesData, totalPages);
   }
 
-  // Remove placeholder rows between the header and the TOPLAM row.
-  for (let i = 1; i < rows.length - 1; i++) {
-    table.removeChild(rows[i]);
-  }
+  const vars = {
+    baslangic_no: startNum,
+    bitis_no: endNum,
+    toplam_sayfa: totalPages,
+    toplam_sayfa_yazi: numberToTurkishWords(totalPages),
+    ek_sayisi: ekSayisi,
+    ek_sayisi_yazi: numberToTurkishWords(ekSayisi),
+    il: (extraVars && extraVars.il) || '',
+  };
 
-  const tblGrid = directChildren(table, 'tblGrid')[0];
-  const gridColWidths = tblGrid
-    ? directChildren(tblGrid, 'gridCol').map((gc) => gc.getAttribute('w:w'))
-    : [];
-
-  for (const f of filesData) {
-    const tr = buildDataRow(xmlDoc, gridColWidths, [
-      { text: f.ek_no, align: 'center' },
-      { text: f.mahiyet, align: 'left' },
-      { text: f.page_count, align: 'center' },
-      { text: '', align: 'center' },
-      { text: 'F', align: 'center' },
-    ]);
-    table.insertBefore(tr, toplamRow);
-  }
-
-  // Paragraph placeholder substitution — only direct body paragraphs (never
-  // ones nested in a table), matching python-docx's doc.paragraphs.
-  const body = xmlDoc.getElementsByTagNameNS(DOCX_W_NS, 'body')[0];
-  for (const p of directChildren(body, 'p')) {
-    const tNodes = Array.from(p.getElementsByTagNameNS(DOCX_W_NS, 't'));
-    const fullText = tNodes.map((t) => t.textContent).join('');
-    if (!fullText.includes('( ) numaraları altında')) continue;
-    for (const t of tNodes) {
-      t.textContent = t.textContent
-        .replace('( ) numaraları', `(${startNum}-${endNum}) numaraları`)
-        .replace('( ) sayfadan', `(${totalPages}) sayfadan`);
+  // Applies everywhere in the document (body paragraphs *and* table cells —
+  // unlike the old sgk-only implementation, which only scanned body
+  // paragraphs since that was the only place sgk_müfettis needed it).
+  const allTextNodes = Array.from(xmlDoc.getElementsByTagNameNS(DOCX_W_NS, 't'));
+  for (const ph of (template.text_placeholders || [])) {
+    const replacement = fillTemplateString(ph.replace, vars);
+    for (const t of allTextNodes) {
+      if (t.textContent.includes(ph.search)) {
+        t.textContent = t.textContent.split(ph.search).join(replacement);
+      }
     }
   }
 
@@ -346,224 +452,39 @@ async function buildDocxFromExistingTemplate(templateBytes, filesData) {
   return fflate.zipSync(zipEntries, { level: 6 });
 }
 
-/**
- * "legacy" mode: builds a Word document from scratch using the `docx`
- * library, driven by the same declarative JSON shape docx_service._generate_legacy_docx
- * used to read from templates.json (header_text, table.header_rows/data_columns,
- * footer_rows, post_table_text, post_table_signature, logo_base64).
- */
-async function buildDocxFromScratch(template, filesData) {
-  const {
-    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-    AlignmentType, WidthType, ImageRun, VerticalAlign,
-  } = docx;
-
-  const totalPages = filesData.reduce((sum, f) => sum + (f.page_count || 0), 0);
-  const children = [];
-
-  // Logo
-  if (template.logo_base64) {
-    try {
-      const logoBytes = base64ToUint8Array(template.logo_base64);
-      children.push(new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [new ImageRun({ data: logoBytes, transformation: { width: 72, height: 72 }, type: 'png' })],
-      }));
-    } catch (e) {
-      console.warn('Logo embed failed, continuing without logo:', e);
+/** Resolves which template + extra fill-in values (currently just "il") to
+ * use for the current user: their saved profile if they have one, else the
+ * first available template as a defensive fallback (the backend normally
+ * redirects to /onboarding before a profile-less user can reach the app at
+ * all, so this fallback should rarely if ever actually fire). */
+async function resolveUserTemplateChoice() {
+  const meRes = await fetch('/api/me');
+  if (meRes.ok) {
+    const me = await meRes.json();
+    if (me.profile && me.profile.template_id) {
+      return { templateId: me.profile.template_id, il: me.profile.il };
     }
   }
-
-  // Header
-  if (template.header_text) {
-    const runs = [];
-    for (const line of template.header_text.split('\n')) {
-      if (line === '---') {
-        runs.push(new TextRun({ text: '___________________________________________________________', bold: true, break: 1 }));
-      } else {
-        runs.push(new TextRun({ text: line, bold: true, font: 'Times New Roman', size: 24, break: runs.length ? 1 : 0 }));
-      }
-    }
-    children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: runs }));
-  }
-  children.push(new Paragraph({})); // spacer
-
-  // Table
-  const tableConfig = template.table || {};
-  const headerRows = tableConfig.header_rows || [];
-  const dataColumns = tableConfig.data_columns || [];
-  const numCols = dataColumns.length;
-
-  const tableRows = [];
-
-  // Header rows with colspan/rowspan
-  const grid = headerRows.map(() => new Array(numCols).fill(null));
-  headerRows.forEach((rowDef, rIdx) => {
-    let cIdx = 0;
-    for (const cellDef of rowDef) {
-      while (cIdx < numCols && grid[rIdx][cIdx] !== null) cIdx++;
-      if (cIdx >= numCols) break;
-      const colspan = cellDef.colspan || 1;
-      const rowspan = cellDef.rowspan || 1;
-      grid[rIdx][cIdx] = { text: cellDef.text || '', colspan, rowspan, master: true };
-      for (let ro = 0; ro < rowspan; ro++) {
-        for (let co = 0; co < colspan; co++) {
-          if (ro === 0 && co === 0) continue;
-          grid[rIdx + ro][cIdx + co] = { covered: true, master: false, vMergeContinue: co === 0 };
-        }
-      }
-      cIdx += colspan;
-    }
-  });
-
-  headerRows.forEach((rowDef, rIdx) => {
-    const cells = [];
-    for (let cIdx = 0; cIdx < numCols; cIdx++) {
-      const g = grid[rIdx][cIdx];
-      if (!g) continue;
-      if (g.covered) {
-        if (g.vMergeContinue) {
-          cells.push(new TableCell({ children: [new Paragraph({})], verticalMerge: 'continue' }));
-        }
-        continue;
-      }
-      cells.push(new TableCell({
-        columnSpan: g.colspan > 1 ? g.colspan : undefined,
-        verticalMerge: g.rowspan > 1 ? 'restart' : undefined,
-        verticalAlign: VerticalAlign.CENTER,
-        children: [new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: g.text, bold: true, font: 'Times New Roman', size: 24 })],
-        })],
-      }));
-    }
-    tableRows.push(new TableRow({ children: cells }));
-  });
-
-  // Data rows
-  for (const f of filesData) {
-    const cells = dataColumns.map((colDef) => {
-      let text = '';
-      const ctype = colDef.type;
-      if (ctype === 'ek_no') text = String(f.ek_no ?? '');
-      else if (ctype === 'sayfa_sayisi') text = String(f.page_count ?? '');
-      else if (ctype === 'mahiyet') text = f.mahiyet || '';
-      else if (ctype === 'constant') text = colDef.value || '';
-      const align = ['ek_no', 'sayfa_sayisi', 'constant'].includes(ctype) ? AlignmentType.CENTER : AlignmentType.LEFT;
-      return new TableCell({
-        children: [new Paragraph({ alignment: align, children: [new TextRun({ text, font: 'Times New Roman', size: 24 })] })],
-      });
-    });
-    tableRows.push(new TableRow({ children: cells }));
-  }
-
-  // Footer rows ({toplam_sayfa}/{toplam_sayfa_yazi_ile} placeholders)
-  const footerRows = template.footer_rows || [];
-  const totalPagesWords = capitalize(numberToTurkishWords(totalPages));
-  for (const rowDef of footerRows) {
-    const cells = [];
-    for (const cellDef of rowDef) {
-      const colspan = cellDef.colspan || 1;
-      let text = cellDef.text || '';
-      text = text.replace('{toplam_sayfa}', String(totalPages)).replace('{toplam_sayfa_yazi_ile}', totalPagesWords);
-      const align = cellDef.align === 'center' ? AlignmentType.CENTER
-        : cellDef.align === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
-      cells.push(new TableCell({
-        columnSpan: colspan > 1 ? colspan : undefined,
-        children: [new Paragraph({ alignment: align, children: [new TextRun({ text, bold: !!cellDef.bold, font: 'Times New Roman', size: 24 })] })],
-      }));
-    }
-    tableRows.push(new TableRow({ children: cells }));
-  }
-
-  children.push(new Table({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }));
-
-  // Post-table text
-  if (template.post_table_text) {
-    children.push(new Paragraph({}));
-    const startNum = filesData.length ? filesData[0].ek_no : 1;
-    const endNum = filesData.length ? filesData[filesData.length - 1].ek_no : 1;
-    const today = new Date();
-    const dateStr = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
-    let text = template.post_table_text
-      .replace('{gunun_tarihi}', dateStr)
-      .replace('{baslangic_no}', String(startNum))
-      .replace('{bitis_no}', String(endNum))
-      .replace('{toplam_sayfa}', String(totalPages));
-    children.push(new Paragraph({
-      alignment: template.post_table_align === 'justify' ? AlignmentType.JUSTIFIED : AlignmentType.LEFT,
-      children: [new TextRun({ text, bold: !!template.post_table_bold, font: 'Times New Roman', size: 24 })],
-    }));
-  }
-
-  // Signature block
-  if (template.post_table_signature) {
-    children.push(new Paragraph({}), new Paragraph({}));
-    const sig = template.post_table_signature;
-    children.push(new Table({
-      rows: [
-        new TableRow({
-          children: [
-            new TableCell({ borders: NO_BORDERS, children: [new Paragraph({})] }),
-            new TableCell({ borders: NO_BORDERS, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sig.name || '' })] })] }),
-          ],
-        }),
-        new TableRow({
-          children: [
-            new TableCell({ borders: NO_BORDERS, children: [new Paragraph({})] }),
-            new TableCell({ borders: NO_BORDERS, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: sig.title || '' })] })] }),
-          ],
-        }),
-      ],
-      width: { size: 100, type: WidthType.PERCENTAGE },
-    }));
-  }
-
-  const doc = new Document({ sections: [{ children }] });
-  return Packer.toArrayBuffer(doc);
-}
-
-let NO_BORDERS;
-function initNoBorders() {
-  const none = { style: docx.BorderStyle.NONE, size: 0, color: 'FFFFFF' };
-  NO_BORDERS = { top: none, bottom: none, left: none, right: none };
-}
-
-function capitalize(s) {
-  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}
-
-function base64ToUint8Array(b64) {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-/** Fetches templates[0]'s full config (and its source .docx bytes, if any)
- * and builds the Word index list. Templates[0] is always used today — see
- * the "template selection" note in the project's memory: institution-based
- * selection is deferred until auth exists. */
-async function buildDocxIndex(filesData) {
-  if (typeof NO_BORDERS === 'undefined' || !NO_BORDERS) initNoBorders();
-
   const listRes = await fetch('/api/templates');
   if (!listRes.ok) throw new Error('Failed to load template list.');
   const list = await listRes.json();
   if (!list.length) throw new Error('No templates available.');
+  return { templateId: list[0].id, il: null };
+}
 
-  const configRes = await fetch(`/api/templates/${encodeURIComponent(list[0].id)}`);
+/** Fetches the current user's chosen template's full config + source .docx
+ * bytes and builds the Word index list. */
+async function buildDocxIndex(filesData) {
+  const { templateId, il } = await resolveUserTemplateChoice();
+
+  const configRes = await fetch(`/api/templates/${encodeURIComponent(templateId)}`);
   if (!configRes.ok) throw new Error('Failed to load template config.');
   const template = await configRes.json();
 
-  if (template.file_path) {
-    const fileRes = await fetch(`/api/templates/${encodeURIComponent(template.id)}/file`);
-    if (!fileRes.ok) throw new Error('Failed to load template file.');
-    const templateBytes = await fileRes.arrayBuffer();
-    return buildDocxFromExistingTemplate(templateBytes, filesData);
-  }
-
-  return buildDocxFromScratch(template, filesData);
+  const fileRes = await fetch(`/api/templates/${encodeURIComponent(template.id)}/file`);
+  if (!fileRes.ok) throw new Error('Failed to load template file.');
+  const templateBytes = await fileRes.arrayBuffer();
+  return buildDocxFromExistingTemplate(templateBytes, filesData, template, { il });
 }
 
 // ─── ZIP assembly + download ────────────────────────────────────────────
@@ -649,6 +570,7 @@ async function buildAndDownloadZip(numbered) {
     const blob = new Blob([zipped], { type: 'application/zip' });
     triggerBlobDownload(blob, 'jetek_files.zip');
     if (typeof showStatus === 'function') showStatus('✓ İndirme hazır.', 'text-green-400');
+    logEvent('download_zip', { file_count: filesData.length, numbered, total_pages: filesData.reduce((s, f) => s + (f.page_count || 0), 0) });
     await cleanupDeliveredFiles(filesData.map((f) => f.file_id));
   } catch (e) {
     console.error('ZIP packaging failed:', e);

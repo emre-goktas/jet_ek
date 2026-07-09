@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JETEK — Profil</title>
+  <link rel="icon" type="image/jpeg" href="/static/icon.jpg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#eff6ff', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center font-sans px-4 py-10">
+
+  <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 sm:p-10 flex flex-col gap-6 shadow-2xl w-full max-w-lg">
+    <div class="flex items-center gap-2">
+      <div class="relative flex items-center justify-center bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg p-1.5 shadow-[0_0_15px_rgba(34,211,238,0.4)]">
+        <svg class="w-5 h-5 text-gray-900 translate-x-0.5 -translate-y-0.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+          <path d="M22 2L11 13"></path>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-black tracking-widest italic">
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-blue-600">JET</span><span class="text-gray-100">EK</span>
+      </h1>
+    </div>
+
+    <div>
+      <h2 class="text-lg font-semibold text-gray-100">{{ 'Profilinizi güncelleyin' if profile else 'Hoş geldiniz' }}</h2>
+      <p class="text-sm text-gray-400 mt-1">Ek belge listeniz için ad, unvan ve varsayılan şablonunuzu belirleyin. Bunu istediğiniz zaman buradan değiştirebilirsiniz.</p>
+    </div>
+
+    <form id="onboarding-form" class="flex flex-col gap-5">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5" for="name">Ad Soyad</label>
+        <input type="text" id="name" name="name" required maxlength="150"
+          value="{{ profile.name if profile else (user.name or '') }}"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5" for="title">Unvan</label>
+        <input type="text" id="title" name="title" maxlength="150"
+          value="{{ profile.title if profile else '' }}"
+          placeholder="örn. SGK Müfettişi"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-2">Varsayılan Şablon</label>
+        <div class="flex flex-col gap-2">
+          {% for t in template_choices %}
+          <label class="flex items-start gap-3 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 cursor-pointer has-[:checked]:border-blue-500 has-[:checked]:bg-gray-800/80 transition-colors">
+            <input type="radio" name="template_id" value="{{ t.id }}" required
+              data-needs-il="{{ 'true' if t.needs_il else 'false' }}"
+              {% if profile and profile.template_id == t.id %}checked{% endif %}
+              class="mt-0.5 accent-blue-500" onchange="onTemplateChange()" />
+            <span class="text-sm text-gray-200">{{ t.label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div id="il-field" class="hidden">
+        <label class="block text-xs font-medium text-gray-400 mb-1.5" for="il">İl</label>
+        <select id="il" name="il"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+          <option value="">Seçiniz</option>
+          {% for il in il_list %}
+          <option value="{{ il }}" {% if profile and profile.il == il %}selected{% endif %}>{{ il }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <p id="onboarding-error" class="text-xs text-red-400 hidden"></p>
+
+      <div class="flex gap-3 mt-2">
+        {% if profile %}
+        <a href="/" class="flex-1 text-center px-4 py-2.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors">İptal</a>
+        {% endif %}
+        <button type="submit" class="flex-1 px-4 py-2.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-lg shadow-blue-500/20 transition-colors">
+          {{ 'Kaydet' if profile else 'Devam Et' }}
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    function onTemplateChange() {
+      const checked = document.querySelector('input[name="template_id"]:checked');
+      const needsIl = checked && checked.dataset.needsIl === 'true';
+      const ilField = document.getElementById('il-field');
+      const ilSelect = document.getElementById('il');
+      ilField.classList.toggle('hidden', !needsIl);
+      ilSelect.required = needsIl;
+    }
+    onTemplateChange();
+
+    document.getElementById('onboarding-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('onboarding-error');
+      errEl.classList.add('hidden');
+
+      const form = e.target;
+      const body = {
+        name: form.name.value,
+        title: form.title.value,
+        template_id: form.template_id.value,
+        il: form.il.value || null,
+      };
+
+      try {
+        const res = await fetch('/api/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          errEl.textContent = (data.detail && (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join(', ') : data.detail)) || 'Kaydedilemedi.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        window.location.href = '/';
+      } catch (err) {
+        errEl.textContent = 'Bağlantı hatası.';
+        errEl.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+
+</html>

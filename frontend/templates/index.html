@@ -35,8 +35,6 @@
        düzenlemek) tarayıcıda. Salt MIT lisanslı, bağımlılıksız — resmi evrak işleyen bu proje
        için JSZip'in MIT/GPLv3 çift lisansından kaçınmak amacıyla tercih edildi. -->
   <script src="https://unpkg.com/fflate@0.8.2/umd/index.js"></script>
-  <!-- docx: sıfırdan Word belgesi üretimi (şablon dosyası olmayan kurumlar) tarayıcıda -->
-  <script src="https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"></script>
   <script src="/static/js/document-builder.js" defer></script>
   <style>
     @keyframes domino-jump {
@@ -81,6 +79,12 @@
       <img src="{{ user.picture }}" alt="" class="w-7 h-7 rounded-full border border-gray-700" referrerpolicy="no-referrer">
       {% endif %}
       <span class="hidden sm:inline text-sm text-gray-300 max-w-[10rem] truncate">{{ user.name }}</span>
+      <a href="/onboarding" class="p-1.5 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors" title="Profil ayarları" aria-label="Profil ayarları">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </a>
       <button onclick="logout()" class="p-1.5 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors" title="Çıkış yap" aria-label="Çıkış yap">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -613,6 +617,7 @@
 
         initSortable();
         observeAllPageCanvases(viewer);
+        if (typeof logEvent === 'function') logEvent('upload', { filename: file.name });
         return true;
       } catch (err) {
         showStatus('✗ Bağlantı hatası.', 'text-red-400');
@@ -1151,6 +1156,7 @@
 
       if (res) {
         replaceLoadingWithOutput(tempUiId, res);
+        if (typeof logEvent === 'function') logEvent('extract', { page_count: extractionList.length });
         await persistBatchExtractionCut(extractedCardEls); // no-op unless currently viewing a batch in Batch Mode
       } else {
         const loader = document.getElementById(`loading-task-${tempUiId}`);
@@ -1284,6 +1290,7 @@
                 if (spinnerBtn) spinnerBtn.outerHTML = originalBtns[fileId];
              }
           }
+          if (typeof logEvent === 'function') logEvent('ai_rename', { requested: fileIds.length, succeeded: Object.keys(results).length });
         } else {
           console.error('Failed to batch rename files');
           alert('Toplu isimlendirme sırasında hata oluştu.');
@@ -1333,6 +1340,7 @@
         const blob = await res.blob();
         const filename = li?.querySelector('p.truncate')?.textContent?.trim() || `${fileId}.pdf`;
         triggerBlobDownload(blob, `${String(index).padStart(2, '0')}_${filename}`);
+        if (typeof logEvent === 'function') logEvent('download_single', {});
         await cleanupDeliveredFiles([fileId]);
       } catch (e) {
         console.error('Download failed:', e);

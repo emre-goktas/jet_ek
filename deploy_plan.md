@@ -6,7 +6,7 @@ Projemin kullanım kurgusunu şöyle tasarlamak istiyorum;
 1- sgk_template(bunun isimi sgk müfettiş şablonu yapcam)
 2- henüz proje dizininde yok ama sgk_template ile %100 uyumlu oan bir sgk denetmen şablonu docx dosyası ekleyeğim. bu şablon seçilirse ekstra İL bilgisi sormamız gerekecek. bu bilgiyi bu şablonun header kısmına basmamız gerekecek. (örnek istanbul sgk il müdürlüğü, ankara sgk il müdürlüğü vs gibi)
 3- sb_template bu da hazır dizinde var zaten. doc servisimiz hangi bilgili bu şablonun neresine basacak onu ayarlamamız gerek sadece galiba. (belkide hazırdır kodlar kontrol gerek)
-4- şablonsuz devam et seçeneği. Şablonsuz seçenekte zip içinde .docx tablo vereceğiz. sayfa üst bilgisi isim bilgisi vs birçey olamayacak. ek no-belgenin mahiyeti-sayfa adedi sutunları olacak sadece.
+4- şablonsuz devam et seçeneği. Şablonsuz seçenekte zip içinde .docx tablo vereceğiz. sayfa üst bilgisi isim bilgisi vs birşey olamayacak. ek no-belgenin mahiyeti-sayfa adedi sutunları olacak sadece.
 
 4- Kullanıcı ana sayfaya yönlendirilir.Yani upload ekranımız açılır. PDF lerini düzenler ve işlemlerini yapar.
 5- Akıllı isimlendirme(şimşek ikonuna) tıklandığında APİ anahtarını getirmesini isteriz. Kullanıcı api anahtarını alır ekrana vereceğimiz bir metin kutusuna yapıştırır. Bu api anahtarını şifreli bir şekilde database e alırız. (email ile eşleşecek şekilde). ve hatta mümkün ise aldığı api anahtarı kullanıcının tarayıcısında kalsın biz hiç veritabanına yazmayalım. bu durumda backendimiz user in tarayıcısından api anahtarını okuyabilir mi ?
