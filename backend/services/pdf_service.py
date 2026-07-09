@@ -317,6 +317,31 @@ def rename_output(file_id: str, new_display_name: str) -> tuple[Path, str, dict]
     return new_path, new_filename, metadata
 
 
+def delete_output(file_id: str) -> None:
+    """Best-effort full removal of an output once its content has been
+    delivered to the client (e.g. a ZIP built client-side, or a completed
+    single-file download): shreds the PDF bytes, its metadata sidecar, and
+    drops the cached path. Silently no-ops for a missing/invalid/locked
+    file_id — this is opportunistic cleanup, not a source of truth the
+    caller needs to retry on failure.
+    """
+    try:
+        path = get_output_path(file_id)
+    except (FileNotFoundError, ValueError):
+        return
+
+    if is_file_locked(path):
+        return
+
+    secure_delete(path)
+
+    json_path = STORAGE_DIR / f"{file_id}.json"
+    if json_path.exists():
+        secure_delete(json_path)
+
+    _PATH_CACHE.pop(file_id, None)
+
+
 def secure_delete(path: Path) -> None:
     """Best-effort secure deletion: overwrites the file's bytes before unlinking.
     Not a guarantee on copy-on-write filesystems/SSDs with wear-leveling, but a

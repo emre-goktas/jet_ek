@@ -12,6 +12,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 # pyrefly: ignore [missing-import]
 from fastapi.responses import FileResponse
+# pyrefly: ignore [missing-import]
+from pydantic import BaseModel
 
 from backend.services import pdf_service
 
@@ -38,3 +40,20 @@ def download_pdf(file_id: str, ek_no: int = None):
         media_type="application/pdf",
         filename=filename,
     )
+
+
+class CleanupRequest(BaseModel):
+    file_ids: list[str]
+
+
+@router.post("/cleanup")
+def cleanup_files(req: CleanupRequest):
+    """Deletes output files right after their content has been delivered to
+    the client — the ZIP/Word index are now built client-side, so the
+    backend no longer sees "download finished" on its own. Only ever
+    touches the specific file_ids the caller says it already has; never
+    reaches for a source upload on its own. Best-effort: missing/invalid/
+    locked ids are silently skipped, nothing here needs a retry."""
+    for file_id in req.file_ids:
+        pdf_service.delete_output(file_id)
+    return {"status": "ok"}

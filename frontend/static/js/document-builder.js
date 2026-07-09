@@ -580,6 +580,31 @@ function triggerBlobDownload(blob, filename) {
 }
 
 /**
+ * Tells the backend it can delete these output files now that their content
+ * has actually reached the browser (POST /cleanup) — the ZIP/docx are built
+ * client-side now, so the backend has no other way to know a download
+ * finished. Only ever passed the specific output file_ids just delivered,
+ * never a source upload — a later extraction from the same upload should
+ * still work. Best-effort: a failed cleanup call just means the hourly/
+ * nightly sweeps (see backend/main.py) catch it later instead.
+ */
+async function cleanupDeliveredFiles(fileIds) {
+  if (!fileIds || fileIds.length === 0) return;
+  try {
+    await fetch('/cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_ids: fileIds }),
+    });
+  } catch (e) {
+    console.error('Cleanup request failed (non-fatal, hourly/nightly sweep will catch it):', e);
+  }
+  fileIds.forEach((id) => {
+    if (typeof removeOutputByFileId === 'function') removeOutputByFileId(id);
+  });
+}
+
+/**
  * Replaces GET /download-zip and /download-zip-numbered: fetches each
  * output's PDF bytes from /pdf-source/{id}, optionally stamps EK numbers,
  * builds the Word index, and packages everything into one ZIP client-side.
@@ -624,6 +649,7 @@ async function buildAndDownloadZip(numbered) {
     const blob = new Blob([zipped], { type: 'application/zip' });
     triggerBlobDownload(blob, 'jetek_files.zip');
     if (typeof showStatus === 'function') showStatus('✓ İndirme hazır.', 'text-green-400');
+    await cleanupDeliveredFiles(filesData.map((f) => f.file_id));
   } catch (e) {
     console.error('ZIP packaging failed:', e);
     if (typeof showStatus === 'function') showStatus('✗ Paketleme sırasında hata oluştu.', 'text-red-400');

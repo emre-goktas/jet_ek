@@ -3,10 +3,12 @@ FastAPI application — PDF Regulator
 """
 from pathlib import Path
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import asyncio
+import itertools
 import time
 import logging
 
@@ -24,30 +26,57 @@ STATIC_DIR = BASE_DIR / "frontend" / "static"
 logger = logging.getLogger(__name__)
 
 
+def _sweep_storage(max_age_seconds: float | None):
+    """Deletes unlocked files from STORAGE_DIR. With max_age_seconds set, only
+    files older than that are touched (the hourly safety net); with None,
+    everything unlocked is wiped regardless of age (the nightly full sweep —
+    most output files should already be gone via /cleanup by then, this is
+    the backstop for abandoned/incomplete sessions)."""
+    now = time.time()
+    for p in itertools.chain(STORAGE_DIR.glob("*.pdf"), STORAGE_DIR.glob("*.json")):
+        try:
+            if max_age_seconds is None or now - p.stat().st_mtime > max_age_seconds:
+                if not is_file_locked(p):
+                    secure_delete(p)
+        except Exception as e:
+            logging.warning(f"Cleanup failed for {p}: {e}")
+
+
 async def cleanup_old_files():
-    """Cleans up storage files older than 1 hour, running every hour."""
-    import itertools
+    """Safety net: every hour, deletes unlocked files older than 1 hour."""
     while True:
         try:
-            now = time.time()
-            for p in itertools.chain(STORAGE_DIR.glob("*.pdf"), STORAGE_DIR.glob("*.json")):
-                try:
-                    if now - p.stat().st_mtime > 3600:
-                        if not is_file_locked(p):
-                            secure_delete(p)
-                except Exception as e:
-                    logging.warning(f"Cleanup failed for {p}: {e}")
+            _sweep_storage(max_age_seconds=3600)
         except Exception as e:
-            logging.error(f"Global cleanup loop error: {e}")
+            logging.error(f"Hourly cleanup loop error: {e}")
         await asyncio.sleep(3600)
+
+
+async def nightly_full_cleanup():
+    """Once a day around 03:00 local time, wipes every unlocked file in
+    storage regardless of age — the harder guarantee behind the hourly
+    safety net above, so nothing from a finished session lingers overnight."""
+    while True:
+        now = datetime.now()
+        next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        await asyncio.sleep((next_run - now).total_seconds())
+        try:
+            _sweep_storage(max_age_seconds=None)
+        except Exception as e:
+            logging.error(f"Nightly cleanup loop error: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     cleanup_task = asyncio.create_task(cleanup_old_files())
+    nightly_task = asyncio.create_task(nightly_full_cleanup())
     yield
     cleanup_task.cancel()
+    nightly_task.cancel()
 
 app = FastAPI(
     title="PDF Regulator",

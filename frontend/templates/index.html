@@ -1283,7 +1283,10 @@
       }
     }
 
-    function downloadSingleFile(fileId, btn) {
+    // Fetch+blob (rather than a window.location.href navigation) so we get a
+    // completion signal to hang the post-delivery /cleanup call off of —
+    // see cleanupDeliveredFiles() in document-builder.js.
+    async function downloadSingleFile(fileId, btn) {
       const listItems = Array.from(document.querySelectorAll('#output-list li'));
       const li = btn.closest('li');
       let count = 0;
@@ -1296,7 +1299,21 @@
             break;
          }
       }
-      window.location.href = `/download/${fileId}?ek_no=${index}`;
+
+      try {
+        const res = await fetch(`/download/${fileId}?ek_no=${index}`);
+        if (!res.ok) {
+          showStatus('✗ İndirme başarısız oldu.', 'text-red-400');
+          return;
+        }
+        const blob = await res.blob();
+        const filename = li?.querySelector('p.truncate')?.textContent?.trim() || `${fileId}.pdf`;
+        triggerBlobDownload(blob, `${String(index).padStart(2, '0')}_${filename}`);
+        await cleanupDeliveredFiles([fileId]);
+      } catch (e) {
+        console.error('Download failed:', e);
+        showStatus('✗ İndirme sırasında hata oluştu.', 'text-red-400');
+      }
     }
 
     let currentPreviewZoom = 1;

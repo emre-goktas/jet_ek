@@ -19,6 +19,7 @@ Deploy olarak yeni fikrim şu;
 3- Database sqllite ve kendi lokal leptobum
 4- login gmail ile şifresiz.
 5- AI API BYOK (kullanıcının kendi api key'i db'de saklanacak mümkün ise kendi tarayıcısında saklansın)
-
+6- bu aşamada ödeme alt yapısı vs yok. tamamen ücretsiz olacak projem.
+7- localde calışan backedn ve veritabanı ile frontent entegrasyonu için gerekirse bir otomasyon yapmamız gerek. (bu konuda fikirlerine açığım)
 kullanıcı sayısı 20 yi aşmaya başladığında uygun bir vps e taşıyacağız backendi. kullanıcı sayısı artmaya devam ederse daha profosyonel bir serverles(aws gibi) platforma taşıyacağız.
 
