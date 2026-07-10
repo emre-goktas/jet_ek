@@ -4,13 +4,13 @@
 >
   <!-- File header -->
   <div class="col-span-full text-sm text-gray-400 mb-2 mt-6 pt-4 border-t border-gray-800 flex items-center gap-2 document-separator" data-pdf-id="{{ pdf_id }}">
-    <input type="checkbox" class="batch-select-checkbox w-4 h-4 accent-blue-500 cursor-pointer" onclick="toggleBatchSelection(this, '{{ pdf_id }}')" title="Bu belgenin tüm sayfalarını seç">
     <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round"
         d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
     </svg>
     <span class="text-gray-300 font-medium">{{ filename }}</span>
     <span class="text-gray-600">· {{ page_count }} sayfa</span>
+    <input type="checkbox" class="batch-select-checkbox w-4 h-4 accent-blue-500 cursor-pointer" onclick="toggleBatchSelection(this, '{{ pdf_id }}')" title="Bu belgenin tüm sayfalarını seç">
   </div>
 
   <!-- Page cards -->
@@ -21,9 +21,16 @@
     data-pdf-id="{{ pdf_id }}"
     data-page-index="{{ i }}"
     title="Sayfa {{ i + 1 }}"
+    onclick="handleCardBodyClick(event)"
+    oncontextmenu="openCardContextMenu(event, this)"
   >
-    <!-- Top Bar: pure click area — drag handle, "Aç" (preview) button, and rotates
-         are the only things that do anything here; the strip background itself is inert. -->
+    <!-- Select checkbox: floats over the top-right corner of the card, not in the strip. -->
+    <div class="page-select-checkbox-wrap">
+      <input type="checkbox" class="page-select-checkbox" onclick="event.stopPropagation(); applyPageSelection(this, event)" title="Bu sayfayı seç">
+    </div>
+
+    <!-- Top Bar: pure click area — drag handle and "Aç" (preview) are the only
+         things that do anything here. Rotate lives in the right-click menu now. -->
     <div class="card-top-bar">
       <div class="drag-handle" title="Sıralamak için sürükleyin">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/></svg>
@@ -31,11 +38,6 @@
       <div class="page-number-small">{{ i + 1 }}</div>
 
       <button class="open-preview-btn" onclick="event.stopPropagation(); showPreview(this.closest('.page-card'))" title="Önizle">Aç</button>
-
-      <div class="flex gap-1 ml-auto">
-        <button class="small-rotate-btn" onclick="rotateSinglePage(event, this.closest('.page-card'), 'left')" title="Sola döndür">↺</button>
-        <button class="small-rotate-btn" onclick="rotateSinglePage(event, this.closest('.page-card'), 'right')" title="Sağa döndür">↻</button>
-      </div>
     </div>
 
     <canvas
