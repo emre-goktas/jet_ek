@@ -6,26 +6,20 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pymupdf
 from google import genai
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from backend.services.pdf_service import get_pdf_info, rename_output
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 LOG_FILE_PATH = DATA_DIR / "ai_logs.jsonl"
 
-_client = None
-
-def get_client():
-    global _client
-    if _client is None:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("Gemini API key is missing. Please set GEMINI_API_KEY in .env file.")
-
-        _client = genai.Client(api_key=api_key)
-    return _client
+def get_client(api_key: str):
+    """BYOK: each request brings its own Gemini key (header-passthrough from the
+    browser's localStorage) — never persisted to disk/DB and never cached across
+    requests, since a shared server-side key would let one user's usage exhaust
+    another's quota/billing."""
+    if not api_key:
+        raise ValueError("Gemini API key is missing.")
+    return genai.Client(api_key=api_key)
 
 def _append_log(entry: dict):
     """Appends one JSON object per line (JSONL) so a partial/failed write only
@@ -107,7 +101,7 @@ def _clean_ai_name(new_name: str) -> str:
         new_name = new_name[:-4].strip()
     return new_name
 
-def jet_rename_pdf(file_id: str) -> str:
+def jet_rename_pdf(file_id: str, api_key: str) -> str:
     """
     Extracts the first page of the given PDF, sends it to Gemini 2.5 Flash,
     gets a concise filename, renames the file on disk, logs it, and returns the new name.
@@ -116,7 +110,7 @@ def jet_rename_pdf(file_id: str) -> str:
     temp_pdf_path = None
     client = None
     try:
-        client = get_client()
+        client = get_client(api_key)
 
         # 1. Get the target PDF path
         path, original_filename, _ = get_pdf_info(file_id)
@@ -168,7 +162,7 @@ def jet_rename_pdf(file_id: str) -> str:
             except Exception:
                 pass
 
-def jet_rename_pdf_batch(file_ids: list[str]) -> dict:
+def jet_rename_pdf_batch(file_ids: list[str], api_key: str) -> dict:
     """
     Extracts the first page of multiple PDFs, uploads them to Gemini (in parallel),
     requests structured JSON for all renames at once.
@@ -182,7 +176,7 @@ def jet_rename_pdf_batch(file_ids: list[str]) -> dict:
 
     try:
         try:
-            client = get_client()
+            client = get_client(api_key)
         except Exception as e:
             for file_id in file_ids:
                 log_ai_error(file_id, f"Failed to initialize Gemini client: {e}")

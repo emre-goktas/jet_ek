@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 import logging
@@ -10,15 +10,19 @@ from backend.rate_limit import limiter
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+MISSING_KEY_DETAIL = "Lütfen Gemini API anahtarınızı ayarlayın."
+
 @router.post("/jet-rename/{file_id}", response_class=HTMLResponse)
 @limiter.limit("10/minute")
-def jet_rename(file_id: str, request: Request):
+def jet_rename(file_id: str, request: Request, x_gemini_api_key: str | None = Header(default=None)):
     """
     Renames the given PDF file_id using Gemini AI based on its first page.
     Returns the updated HTML for the left panel item.
     """
+    if not x_gemini_api_key:
+        raise HTTPException(status_code=400, detail=MISSING_KEY_DETAIL)
     try:
-        new_filename, label, page_count, custom_name = jet_rename_pdf(file_id)
+        new_filename, label, page_count, custom_name = jet_rename_pdf(file_id, x_gemini_api_key)
         context = {
             "request": request,
             "file_id": file_id,
@@ -38,13 +42,15 @@ class BatchRenameRequest(BaseModel):
 
 @router.post("/jet-rename-batch", response_class=JSONResponse)
 @limiter.limit("5/minute")
-def jet_rename_batch(data: BatchRenameRequest, request: Request):
+def jet_rename_batch(data: BatchRenameRequest, request: Request, x_gemini_api_key: str | None = Header(default=None)):
     """
     Renames multiple PDF files using Gemini AI in a single batch.
     Returns a JSON mapping of file_id -> rendered HTML snippet.
     """
+    if not x_gemini_api_key:
+        raise HTTPException(status_code=400, detail=MISSING_KEY_DETAIL)
     try:
-        results = jet_rename_pdf_batch(data.file_ids)
+        results = jet_rename_pdf_batch(data.file_ids, x_gemini_api_key)
         response_htmls = {}
         for file_id, info in results.items():
             context = {

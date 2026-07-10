@@ -120,6 +120,7 @@
           <div class="hidden absolute top-full left-0 mt-1 w-40 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 overflow-hidden">
             <button class="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors" onclick="runJetRenameAll(); this.parentElement.classList.add('hidden')">Jetle isimlendir</button>
             <button class="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Detayla isimlendir</button>
+            <button class="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border-t border-gray-700" onclick="openApiKeyModal(); this.parentElement.classList.add('hidden')">API anahtarımı ayarla</button>
           </div>
         </div>
       </div>
@@ -316,6 +317,28 @@
           </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- API KEY MODAL (BYOK — Gemini) -->
+  <div id="api-key-modal" class="modal-overlay" onclick="closeApiKeyModal()">
+    <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col shadow-2xl"
+      style="max-width: 28rem; width: 100%;" onclick="event.stopPropagation()">
+      <h3 class="text-sm font-semibold text-gray-200 mb-2">Gemini API Anahtarı</h3>
+      <p class="text-xs text-gray-400 mb-4">
+        Akıllı isimlendirme için kendi Gemini API anahtarınızı kullanırsınız. Anahtar yalnızca bu
+        tarayıcıda saklanır; sunucuya veya veritabanına asla yazılmaz.
+      </p>
+      <input id="api-key-input" type="password" autocomplete="off"
+        class="bg-gray-800 border border-gray-700 text-white text-sm rounded px-3 py-2 mb-4 focus:outline-none focus:border-blue-500"
+        placeholder="AIza...">
+      <div class="flex justify-between items-center gap-2">
+        <button type="button" class="text-xs text-red-400 hover:text-red-300" onclick="clearApiKey()">Anahtarı sil</button>
+        <div class="flex gap-2">
+          <button type="button" class="px-3 py-1.5 text-xs text-gray-300 hover:text-white" onclick="closeApiKeyModal()">Vazgeç</button>
+          <button type="button" class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold" onclick="saveApiKey()">Kaydet</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -790,6 +813,47 @@
       const m = document.getElementById('naming-modal');
       if(m) m.classList.remove('active');
       document.body.classList.remove('modal-open');
+    }
+
+    // ─── Gemini API key (BYOK) ───────────────────────────────────────────
+    // Kept only in the browser (localStorage) and sent per-request via the
+    // X-Gemini-Api-Key header — the backend never writes it to disk/DB.
+    const GEMINI_KEY_STORAGE = 'jetek_gemini_api_key';
+
+    function getGeminiApiKey() {
+      return (localStorage.getItem(GEMINI_KEY_STORAGE) || '').trim();
+    }
+
+    function openApiKeyModal() {
+      const input = document.getElementById('api-key-input');
+      if (input) input.value = getGeminiApiKey();
+      const m = document.getElementById('api-key-modal');
+      if (m) m.classList.add('active');
+      document.body.classList.add('modal-open');
+    }
+
+    function closeApiKeyModal() {
+      const m = document.getElementById('api-key-modal');
+      if (m) m.classList.remove('active');
+      document.body.classList.remove('modal-open');
+    }
+
+    function saveApiKey() {
+      const input = document.getElementById('api-key-input');
+      const value = input ? input.value.trim() : '';
+      if (value) {
+        localStorage.setItem(GEMINI_KEY_STORAGE, value);
+      } else {
+        localStorage.removeItem(GEMINI_KEY_STORAGE);
+      }
+      closeApiKeyModal();
+    }
+
+    function clearApiKey() {
+      localStorage.removeItem(GEMINI_KEY_STORAGE);
+      const input = document.getElementById('api-key-input');
+      if (input) input.value = '';
+      closeApiKeyModal();
     }
 
     // ─── Rename modal auto-save ──────────────────────────────────────────
@@ -1285,6 +1349,12 @@
     }
 
     async function runJetRenameAll() {
+      const apiKey = getGeminiApiKey();
+      if (!apiKey) {
+        openApiKeyModal();
+        return;
+      }
+
       // Find all download buttons in the list to extract the file IDs
       const downloadBtns = Array.from(document.querySelectorAll('#output-list .download-btn'));
       if (downloadBtns.length === 0) return;
@@ -1325,10 +1395,10 @@
       try {
         const res = await fetch(`/ai/jet-rename-batch`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Gemini-Api-Key': apiKey },
           body: JSON.stringify({ file_ids: fileIds })
         });
-        
+
         if (res.ok) {
           const results = await res.json();
           // Update all successfully renamed files
@@ -1347,7 +1417,12 @@
           if (typeof logEvent === 'function') logEvent('ai_rename', { requested: fileIds.length, succeeded: Object.keys(results).length });
         } else {
           console.error('Failed to batch rename files');
-          alert('Toplu isimlendirme sırasında hata oluştu.');
+          let errMsg = 'Toplu isimlendirme sırasında hata oluştu.';
+          try {
+            const errBody = await res.json();
+            if (errBody && errBody.detail) errMsg = errBody.detail;
+          } catch (e) { /* not JSON, keep default message */ }
+          alert(errMsg);
           // Restore all buttons
           for (const fileId of fileIds) {
              if (originalBtns[fileId] && listItems[fileId]) {
