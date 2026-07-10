@@ -76,16 +76,21 @@
     {% if user %}
     <div class="ml-auto flex items-center gap-2 relative z-10 shrink-0">
       {% if user.picture %}
-      <img src="{{ user.picture }}" alt="" class="w-7 h-7 rounded-full border border-gray-700" referrerpolicy="no-referrer">
+      <img src="{{ user.picture }}" alt="" class="w-7 h-7 rounded-full border border-blue-500" referrerpolicy="no-referrer">
       {% endif %}
-      <span class="hidden sm:inline text-sm text-gray-300 max-w-[10rem] truncate">{{ user.name }}</span>
-      <a href="/onboarding" class="p-1.5 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors" title="Profil ayarları" aria-label="Profil ayarları">
+      <button onclick="openApiKeyModal()" class="px-2 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors flex items-center gap-1" title="Gemini API anahtarı" aria-label="Gemini API anahtarı">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+        </svg>
+        API
+      </button>
+      <a href="/onboarding" class="p-1.5 text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors" title="Profil ayarları" aria-label="Profil ayarları">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       </a>
-      <button onclick="logout()" class="p-1.5 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors" title="Çıkış yap" aria-label="Çıkış yap">
+      <button onclick="logout()" class="p-1.5 text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors" title="Çıkış yap" aria-label="Çıkış yap">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
         </svg>
@@ -298,23 +303,79 @@
 
   <!-- API KEY MODAL (BYOK — Gemini) -->
   <div id="api-key-modal" class="modal-overlay" onclick="closeApiKeyModal()">
-    <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-7 flex flex-col shadow-2xl"
-      style="max-width: 32rem; width: 100%; font-size: 13px;" onclick="event.stopPropagation()">
-      <h3 class="font-semibold text-gray-200 mb-2" style="font-size: 16px;">Gemini API Anahtarı</h3>
-      <p class="text-gray-400 mb-4" style="font-size: 13px;">
+    <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-8 flex flex-col shadow-2xl"
+      style="max-width: 38rem; width: 100%; font-size: 15px;" onclick="event.stopPropagation()">
+      <h3 class="font-semibold text-gray-200 mb-3" style="font-size: 20px;">Gemini API Anahtarı</h3>
+      <p class="text-gray-400 mb-4" style="font-size: 15px; line-height: 1.6;">
         Akıllı isimlendirme için kendi Gemini API anahtarınızı kullanırsınız. Anahtar yalnızca bu
         tarayıcıda saklanır; sunucuya veya veritabanına asla yazılmaz.
       </p>
+
+      <div class="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 mb-5">
+        <p class="text-amber-400 font-semibold mb-2 flex items-center gap-1.5" style="font-size: 14px;">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          Dikkat
+        </p>
+        <ul class="text-amber-100/80 space-y-1.5 list-disc pl-4" style="font-size: 14px; line-height: 1.6;">
+          <li>Bu anahtar Google hesabınıza değil, <strong class="text-amber-50">bu tarayıcıya</strong> kayıtlıdır.</li>
+          <li>Bu bilgisayarı başka biri kullanırsa — kendi Gmail hesabıyla giriş yapsa bile — işlemler yine <strong class="text-amber-50">sizin anahtarınızla</strong> yapılır ve kullanım size fatura edilir.</li>
+          <li>Ortak/paylaşımlı bilgisayarlarda işiniz bitince "Anahtarı sil" ile temizleyin.</li>
+          <li>Farklı bir tarayıcı veya cihazdan girdiğinizde anahtarı yeniden girmeniz gerekir — otomatik senkronize olmaz.</li>
+        </ul>
+      </div>
+
+      <button type="button" class="text-blue-400 hover:text-blue-300 underline font-bold mb-4 text-left w-fit" style="font-size: 14px;" onclick="openApiKeyGuideModal()">API anahtarı nasıl alınır?</button>
+
       <input id="api-key-input" type="password" autocomplete="off"
-        class="bg-gray-800 border border-gray-700 text-white rounded px-3 py-2.5 mb-4 focus:outline-none focus:border-blue-500"
-        style="font-size: 13px;"
+        class="bg-gray-800 border border-gray-700 text-white rounded px-3.5 py-3 mb-5 focus:outline-none focus:border-blue-500"
+        style="font-size: 15px;"
         placeholder="AIza...">
       <div class="flex justify-between items-center gap-2">
-        <button type="button" class="text-red-400 hover:text-red-300" style="font-size: 13px;" onclick="clearApiKey()">Anahtarı sil</button>
+        <button type="button" class="text-red-400 hover:text-red-300" style="font-size: 14px;" onclick="clearApiKey()">Anahtarı sil</button>
         <div class="flex gap-2">
-          <button type="button" class="px-3 py-1.5 text-gray-300 hover:text-white" style="font-size: 13px;" onclick="closeApiKeyModal()">Vazgeç</button>
-          <button type="button" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold" style="font-size: 13px;" onclick="saveApiKey()">Kaydet</button>
+          <button type="button" class="px-4 py-2 text-gray-300 hover:text-white" style="font-size: 14px;" onclick="closeApiKeyModal()">Vazgeç</button>
+          <button type="button" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold" style="font-size: 14px;" onclick="saveApiKey()">Kaydet</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- API KEY GUIDE MODAL (step-by-step, opens on top of the API key modal) -->
+  <div id="api-key-guide-modal" class="modal-overlay" onclick="closeApiKeyGuideModal()">
+    <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-8 flex flex-col shadow-2xl"
+      style="max-width: 42rem; width: 100%; max-height: 85vh; font-size: 15px;" onclick="event.stopPropagation()">
+      <h3 class="font-semibold text-gray-200 mb-4 shrink-0" style="font-size: 20px;">API Anahtarı Nasıl Alınır?</h3>
+
+      <div class="overflow-y-auto pr-1" style="max-height: 62vh;">
+        <ol class="space-y-3 text-gray-300" style="font-size: 14px; line-height: 1.6;">
+          <li><strong class="text-blue-400">Adım 1:</strong> <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" class="text-blue-400 underline hover:text-blue-300">aistudio.google.com</a> adresine gidin.</li>
+          <li><strong class="text-blue-400">Adım 2:</strong> Açılan sayfada Gmail hesabınızla giriş yapın.</li>
+          <li><strong class="text-blue-400">Adım 3:</strong> Sol sütunda bulunan anahtar simgesine ("Get API key") tıklayın.</li>
+          <li><strong class="text-blue-400">Adım 4:</strong> Sayfanın sağ üstünde bulunan "Create API key" butonuna tıklayın.</li>
+          <li><strong class="text-blue-400">Adım 5:</strong> Açılan pencerede "Choose an imported project" yazısının altındaki "+ Create project" seçeneğine tıklayın.</li>
+          <li><strong class="text-blue-400">Adım 6:</strong> Projeye istediğiniz bir isim verin ya da varsayılan ismi kabul edip "Create project" butonuna tıklayın.</li>
+          <li><strong class="text-blue-400">Adım 7:</strong> Açılan pencerede "Create key" butonuna tıklayın.</li>
+          <li><strong class="text-blue-400">Adım 8:</strong> "API key details" adında yeni bir pencere açılacak. "API Key" satırındaki kopyalama simgesine tıklayın.</li>
+          <li><strong class="text-blue-400">Adım 9:</strong> JETEK'teki ilgili kutucuğa yapıştırın ve "Kaydet" butonuna tıklayın.</li>
+        </ol>
+
+        <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-3 mt-5">
+          <p class="text-emerald-400 font-semibold mb-2" style="font-size: 14px;">Son Kontrol — Ücretsiz Olduğundan Emin Olun</p>
+          <p class="text-emerald-100/80" style="font-size: 13px; line-height: 1.6;">
+            Google AI Studio'da sol sütundaki ayarlar simgesine tıklayın; <strong class="text-emerald-50">"Account status"</strong>
+            bölümünde <strong class="text-emerald-50">"Unpaid services"</strong> yazdığından emin olun. Aynı sütundaki
+            "API keys" sayfasında "Set up billing" kısmında <strong class="text-emerald-50">"Free tier"</strong>
+            yazdığından emin olun. Bu kontrol ücretsiz sürümde olduğunuzu doğrular; kredi kartınızdan ücret
+            kesilmez. (JETEK'teki "Adlandır" butonunun limiti ve hızı tamamen kullandığınız API anahtarıyla
+            ilgilidir — ücretli anahtarlarda limit ve token sınırları çok daha esnektir.)
+          </p>
+        </div>
+      </div>
+
+      <div class="flex justify-end mt-5 shrink-0">
+        <button type="button" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold" style="font-size: 14px;" onclick="closeApiKeyGuideModal()">Anladım</button>
       </div>
     </div>
   </div>
@@ -893,6 +954,22 @@
       const input = document.getElementById('api-key-input');
       if (input) input.value = '';
       closeApiKeyModal();
+    }
+
+    function openApiKeyGuideModal() {
+      const m = document.getElementById('api-key-guide-modal');
+      if (m) m.classList.add('active');
+      document.body.classList.add('modal-open');
+    }
+
+    function closeApiKeyGuideModal() {
+      const m = document.getElementById('api-key-guide-modal');
+      if (m) m.classList.remove('active');
+      // The API key modal underneath is still open — only drop modal-open once
+      // no modal is left active, otherwise scroll-locking is undone too early.
+      if (!document.getElementById('api-key-modal')?.classList.contains('active')) {
+        document.body.classList.remove('modal-open');
+      }
     }
 
     // ─── Rename modal auto-save ──────────────────────────────────────────
