@@ -73,6 +73,7 @@
 
 /* ─── Rotate / Drag Handle Bar ───────────────────── */
 .card-top-bar {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
@@ -86,6 +87,31 @@
 
 .page-card:hover .card-top-bar {
   opacity: 1;
+}
+
+/* Centered dead-center in the strip via absolute positioning so its position
+   doesn't shift with the width of the drag-handle/page-number on the left or
+   the rotate buttons on the right. */
+.open-preview-btn {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #2563eb;
+  /* blue-600 */
+  color: #fff;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.open-preview-btn:hover {
+  background: #3b82f6;
+  /* blue-500 */
 }
 
 .drag-handle {
@@ -260,70 +286,9 @@ body.modal-open {
   z-index: 50;
 }
 
-/* ─── Delete & Restore Feature ───────────────────── */
-.delete-btn-inline {
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: #f87171;
-  /* red-400 */
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.delete-btn-inline:hover {
-  background: #ef4444;
-  /* red-500 */
-  color: #fff;
-}
-
-.deleted-page {
-  border-color: #374151 !important;
-  /* disabled look */
-  background: #111827 !important;
-  box-shadow: none !important;
-  pointer-events: none;
-  /* disable card interactions */
-}
-
-.deleted-page>*:not(.restore-overlay) {
-  opacity: 0.3;
-  filter: grayscale(100%);
-}
-
-.restore-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-  /* Only allow pointer events when the card is deleted */
-  z-index: 20;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.deleted-page .restore-overlay {
-  opacity: 1;
-  pointer-events: auto;
-  /* Active only in deleted state */
-}
-
-.deleted-page .restore-overlay:hover span {
-  background: #3b82f6;
-  /* Hover highlight to restore */
-}
-
-/* Pages consumed by an extraction: fully removed from the grid (not just dimmed like
-   .deleted-page), since they now live in an output file. Restored by deleting that
-   output from the left panel, not from the card itself. */
+/* Pages consumed by an extraction: fully removed from the grid, since they now
+   live in an output file. Restored by removing that output from the left panel,
+   not from the card itself. */
 .extracted-page {
   display: none !important;
 }

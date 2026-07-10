@@ -126,21 +126,13 @@
       <!-- Bulk Download Container -->
       <div id="bulk-download-container" class="hidden p-3 border-t border-gray-800 bg-gray-900 space-y-2">
 
-        <button id="btn-download-all" 
-          class="w-full py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg border border-blue-500 transition-all duration-150 flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 cursor-pointer" 
-          onclick="downloadAllAsZip()">
+        <button id="btn-download-all"
+          class="w-full py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg border border-blue-500 transition-all duration-150 flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 cursor-pointer"
+          onclick="openDownloadConfirmModal()">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
           </svg>
-          Sadece İndir
-        </button>
-        <button id="btn-download-numbered" 
-          class="w-full py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg border border-blue-500 transition-all duration-150 flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 cursor-pointer" 
-          onclick="downloadAllNumberedAsZip()">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-          </svg>
-          İndir ve Ek Numarası Ekle
+          İndir
         </button>
       </div>
     </aside>
@@ -190,16 +182,6 @@
             class="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 transition-colors"
             onclick="clearSelection()">
             Seçimi Temizle
-          </button>
-          <button id="btn-delete-selected"
-            class="hidden px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-red-500 rounded border border-gray-700 transition-colors"
-            onclick="deleteSelectedPages()">
-            Seçilenleri Sil
-          </button>
-          <button id="btn-restore-all"
-            class="hidden px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-yellow-500 rounded border border-gray-700 transition-colors"
-            onclick="restoreAllPages()">
-            Tümünü Geri Yükle
           </button>
         </div>
 
@@ -337,13 +319,28 @@
     </div>
   </div>
 
+  <!-- DOWNLOAD CONFIRM MODAL (Ek Numarası) -->
+  <div id="download-confirm-modal" class="modal-overlay" onclick="closeDownloadConfirmModal()">
+    <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-7 flex flex-col shadow-2xl"
+      style="max-width: 32rem; width: 100%; font-size: 13px;" onclick="event.stopPropagation()">
+      <h3 class="font-semibold text-gray-200 mb-2" style="font-size: 16px;">Ek Numarası</h3>
+      <p class="text-gray-400 mb-5" style="font-size: 13px;">
+        Ek belgelerinizin sağ üst köşesine EK: baskısı yapılsın mı? (Örn: EK: 1/1, EK: 1/2 ...)
+      </p>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="px-3 py-1.5 text-gray-300 hover:text-white" style="font-size: 13px;" onclick="closeDownloadConfirmModal()">İptal</button>
+        <button type="button" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded font-semibold" style="font-size: 13px;" onclick="confirmDownload(false)">Hayır</button>
+        <button type="button" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold" style="font-size: 13px;" onclick="confirmDownload(true)">Evet</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let batchPreviewItems = [];
     let currentBatchPreviewIndex = 0;
     
     let selectedPages = new Set();
     let selectionHistory = []; // Track selection actions for undo
-    let deletedPages = new Set();
     let lastClickedCardId = null;
 
     // Pages consumed by an extraction are hidden from their source grid. Keyed by the
@@ -656,65 +653,9 @@
       el.classList.remove('hidden');
     }
 
-    function selectPage(card, event) {
-      if (event.target.closest('.drag-handle') || event.target.closest('.small-rotate-btn') || event.target.closest('.delete-btn-inline')) return;
-      
-      const cid = card.id;
-      if (deletedPages.has(cid) || card.classList.contains('extracted-page')) return;
-
-      const isShift = event.shiftKey;
-      const isMeta = event.ctrlKey || event.metaKey;
-      
-      const added = [];
-      const removed = [];
-      const prevAnchor = lastClickedCardId;
-
-      if (!isShift && !isMeta) {
-        showPreview(card);
-      } else if (isShift) {
-        const cards = Array.from(document.querySelectorAll('.page-card'));
-        const idx1 = lastClickedCardId ? cards.findIndex(c => c.id === lastClickedCardId) : -1;
-        const idx2 = cards.findIndex(c => c === card);
-        if (idx1 !== -1 && idx2 !== -1) {
-          const start = Math.min(idx1, idx2);
-          const end = Math.max(idx1, idx2);
-          for (let i = start; i <= end; i++) {
-            const currentId = cards[i].id;
-            if (!deletedPages.has(currentId) && !selectedPages.has(currentId) && !cards[i].classList.contains('extracted-page')) {
-              selectedPages.add(currentId);
-              added.push(currentId);
-            }
-          }
-        } else {
-          if (!selectedPages.has(cid)) {
-            selectedPages.add(cid);
-            added.push(cid);
-          }
-        }
-      } else if (isMeta) {
-        if (selectedPages.has(cid)) {
-          selectedPages.delete(cid);
-          removed.push(cid);
-        } else {
-          selectedPages.add(cid);
-          added.push(cid);
-        }
-      }
-      
-      if (isShift || isMeta) {
-        if (added.length > 0 || removed.length > 0) {
-          selectionHistory.push({ added, removed, prevAnchor });
-        }
-        lastClickedCardId = cid;
-      }
-      
-      updateHighlight();
-      updateSelectionInfo();
-    }
-
     function selectAllPages() {
       document.querySelectorAll('.page-card').forEach(c => {
-        if (!deletedPages.has(c.id) && !c.classList.contains('extracted-page')) selectedPages.add(c.id);
+        if (!c.classList.contains('extracted-page')) selectedPages.add(c.id);
       });
       updateHighlight();
       updateSelectionInfo();
@@ -740,56 +681,31 @@
           }
         } catch (e) { }
       });
+
+      // Keep each document's "select all" checkbox in sync: checked only when
+      // every one of its (non-extracted) pages is currently selected.
+      document.querySelectorAll('.document-separator').forEach(sep => {
+        const checkbox = sep.querySelector('.batch-select-checkbox');
+        if (!checkbox) return;
+        const cards = Array.from(document.querySelectorAll(`.page-card[data-pdf-id="${sep.dataset.pdfId}"]`))
+          .filter(c => !c.classList.contains('extracted-page'));
+        checkbox.checked = cards.length > 0 && cards.every(c => selectedPages.has(c.id));
+      });
+    }
+
+    function toggleBatchSelection(checkbox, pdfId) {
+      document.querySelectorAll(`.page-card[data-pdf-id="${pdfId}"]`).forEach(card => {
+        if (card.classList.contains('extracted-page')) return;
+        if (checkbox.checked) selectedPages.add(card.id);
+        else selectedPages.delete(card.id);
+      });
+      updateHighlight();
+      updateSelectionInfo();
     }
 
     function updateSelectionInfo() {
       const info = document.getElementById('selection-info');
       if(info) info.textContent = selectedPages.size === 0 ? 'Sayfa seçin' : `${selectedPages.size} sayfa seçildi.`;
-
-      const btnDeleteSelected = document.getElementById('btn-delete-selected');
-      if (btnDeleteSelected) {
-        btnDeleteSelected.classList.toggle('hidden', selectedPages.size === 0);
-      }
-
-      const btnRestoreAll = document.getElementById('btn-restore-all');
-      if (btnRestoreAll) {
-        btnRestoreAll.classList.toggle('hidden', deletedPages.size === 0);
-      }
-    }
-
-    function deleteSelectedPages() {
-      selectedPages.forEach(cid => {
-        deletedPages.add(cid);
-        const card = document.getElementById(cid);
-        if (card) {
-          card.classList.add('deleted-page');
-          card.classList.remove('selected');
-        }
-      });
-      selectedPages.clear();
-      updateSelectionInfo();
-    }
-
-    function deletePage(event, card) {
-      event.stopPropagation();
-      deletedPages.add(card.id);
-      card.classList.add('deleted-page');
-      card.classList.remove('selected');
-      selectedPages.delete(card.id);
-      updateSelectionInfo();
-    }
-
-    function restorePage(event, card) {
-      event.stopPropagation();
-      deletedPages.delete(card.id);
-      card.classList.remove('deleted-page');
-      updateSelectionInfo();
-    }
-
-    function restoreAllPages() {
-      deletedPages.clear();
-      document.querySelectorAll('.page-card').forEach(card => card.classList.remove('deleted-page'));
-      updateSelectionInfo();
     }
 
     function rotateSinglePage(event, card, direction) {
@@ -1228,7 +1144,7 @@
       const extractedCardEls = [];
 
       cardsInOrder.forEach(card => {
-        if (selectedPages.has(card.id) && !deletedPages.has(card.id)) {
+        if (selectedPages.has(card.id)) {
           extractionList.push({
              pdf_id: card.dataset.pdfId,
              page_idx: parseInt(card.dataset.pageIndex),
@@ -1335,12 +1251,21 @@
 
     // ZIP + Word index packaging used to be GET /download-zip(-numbered); it's
     // now built entirely in the browser — see frontend/static/js/document-builder.js.
-    function downloadAllAsZip() {
-      buildAndDownloadZip(false);
+    function openDownloadConfirmModal() {
+      const m = document.getElementById('download-confirm-modal');
+      if (m) m.classList.add('active');
+      document.body.classList.add('modal-open');
     }
 
-    function downloadAllNumberedAsZip() {
-      buildAndDownloadZip(true);
+    function closeDownloadConfirmModal() {
+      const m = document.getElementById('download-confirm-modal');
+      if (m) m.classList.remove('active');
+      document.body.classList.remove('modal-open');
+    }
+
+    function confirmDownload(numbered) {
+      closeDownloadConfirmModal();
+      buildAndDownloadZip(numbered);
     }
 
     async function runJetRenameAll() {
@@ -1617,6 +1542,12 @@
                 doExtract();
             }
 
+            if (e.key === 'Escape') {
+                if (isInput) return;
+                e.preventDefault();
+                clearSelection();
+            }
+
             if (e.altKey && e.key === 'ArrowLeft') {
                 const isModalOpen = document.getElementById('naming-modal')?.classList.contains('active');
                 if (isModalOpen) {
@@ -1844,16 +1775,16 @@
         submitRename(fileId, newName);
     }
 
-    // Persists the active batch's current grid state (rotation/deletion/reorder) —
+    // Persists the active batch's current grid state (rotation/reorder) —
     // the only edit type that isn't already auto-saved via renameActiveBatch — back
     // to the server, rewriting that same file_id's PDF in place.
-    // Reads the current grid's page order/rotation, excluding deleted cards and any
-    // cards already sent to another batch (.extracted-page — see persistBatchExtractionCut)
-    // and, optionally, a caller-supplied set of cards to leave out too.
+    // Reads the current grid's page order/rotation, excluding any cards already sent
+    // to another batch (.extracted-page — see persistBatchExtractionCut) and,
+    // optionally, a caller-supplied set of cards to leave out too.
     function gatherCurrentGridPages(excludeCardEls = []) {
         const excludeSet = new Set(excludeCardEls);
         return Array.from(document.querySelectorAll('.page-card'))
-            .filter(card => !excludeSet.has(card) && !deletedPages.has(card.id) && !card.classList.contains('extracted-page'))
+            .filter(card => !excludeSet.has(card) && !card.classList.contains('extracted-page'))
             .map(card => ({
                 pdf_id: card.dataset.pdfId,
                 page_idx: parseInt(card.dataset.pageIndex),
@@ -1877,7 +1808,6 @@
         // do not touch those.
         const prefix = `page-card-${fileId}-`;
         Object.keys(pageRotations).forEach(k => { if (k.startsWith(prefix)) delete pageRotations[k]; });
-        Array.from(deletedPages).forEach(k => { if (k.startsWith(prefix)) deletedPages.delete(k); });
 
         // extractedPageIndices[fileId] refers to pre-persist page numbering, and once
         // extraction is a real cut (see persistBatchExtractionCut) there is no more

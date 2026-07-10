@@ -98,7 +98,7 @@ class UpdateRequest(BaseModel):
 
 @router.post("/update/{file_id}")
 def update_pdf(file_id: str, req: UpdateRequest, request: Request):
-    """Persists Batch Mode grid edits (rotate/delete/reorder) to file_id in place."""
+    """Persists Batch Mode grid edits (rotate/reorder) to file_id in place."""
     if not req.pages:
         raise HTTPException(status_code=400, detail="No pages to update.")
 

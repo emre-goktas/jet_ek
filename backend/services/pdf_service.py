@@ -207,7 +207,7 @@ def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[st
 
 def update_pages(file_id: str, pages: list[dict]) -> int:
     """Rebuilds file_id's PDF content IN PLACE from the given ordered page list
-    (reorder/delete/rotate persisted from Batch Mode), keeping the same file_id.
+    (reorder/rotate persisted from Batch Mode), keeping the same file_id.
 
     Since the pages typically self-reference file_id (a batch saving its own
     edited grid), the destination must not be truncated while still being read

@@ -3,7 +3,8 @@
   class="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 sm:gap-6 w-full"
 >
   <!-- File header -->
-  <div class="col-span-full text-sm text-gray-400 mb-2 mt-6 pt-4 border-t border-gray-800 flex items-center gap-2 document-separator">
+  <div class="col-span-full text-sm text-gray-400 mb-2 mt-6 pt-4 border-t border-gray-800 flex items-center gap-2 document-separator" data-pdf-id="{{ pdf_id }}">
+    <input type="checkbox" class="batch-select-checkbox w-4 h-4 accent-blue-500 cursor-pointer" onclick="toggleBatchSelection(this, '{{ pdf_id }}')" title="Bu belgenin tüm sayfalarını seç">
     <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round"
         d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
@@ -19,21 +20,19 @@
     class="page-card"
     data-pdf-id="{{ pdf_id }}"
     data-page-index="{{ i }}"
-    onclick="selectPage(this, event)"
     title="Sayfa {{ i + 1 }}"
   >
-    <!-- Top Bar: Index + Drag Handle + Delete + Rotates -->
+    <!-- Top Bar: pure click area — drag handle, "Aç" (preview) button, and rotates
+         are the only things that do anything here; the strip background itself is inert. -->
     <div class="card-top-bar">
       <div class="drag-handle" title="Sıralamak için sürükleyin">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/></svg>
       </div>
       <div class="page-number-small">{{ i + 1 }}</div>
-      
-      <button class="delete-btn-inline ml-auto mr-1" onclick="deletePage(event, this.closest('.page-card'))" title="Bu sayfayı sil">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-      </button>
 
-      <div class="flex gap-1">
+      <button class="open-preview-btn" onclick="event.stopPropagation(); showPreview(this.closest('.page-card'))" title="Önizle">Aç</button>
+
+      <div class="flex gap-1 ml-auto">
         <button class="small-rotate-btn" onclick="rotateSinglePage(event, this.closest('.page-card'), 'left')" title="Sola döndür">↺</button>
         <button class="small-rotate-btn" onclick="rotateSinglePage(event, this.closest('.page-card'), 'right')" title="Sağa döndür">↻</button>
       </div>
@@ -45,10 +44,6 @@
       data-page-index="{{ i }}"
       aria-label="Sayfa {{ i + 1 }}"
     ></canvas>
-
-    <div class="restore-overlay" onclick="restorePage(event, this.closest('.page-card'))" title="Geri yükle">
-      <span class="text-white text-xs font-bold px-2 py-1 bg-gray-900 rounded bg-opacity-80">Geri Yükle</span>
-    </div>
   </div>
   {% endfor %}
 </div>
