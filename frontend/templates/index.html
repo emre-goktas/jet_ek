@@ -104,25 +104,19 @@
     <aside id="sidebar" class="w-72 sm:w-64 shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
       <div class="px-4 py-3 border-b border-gray-800 flex gap-2">
         <!-- Batch Mode Toggle Button -->
-        <button id="btn-batch-mode" class="flex-1 py-1.5 text-gray-400 bg-gray-800 hover:bg-gray-700 hover:text-white rounded transition-colors flex items-center justify-center border border-transparent" title="Grup Izgara Düzeni" onclick="toggleBatchMode()">
+        <button id="btn-batch-mode" class="flex-1 py-1.5 px-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors flex items-center justify-center gap-1.5" onclick="toggleBatchMode()">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
           </svg>
+          Ek İçeriği
         </button>
-        <!-- AI Rename Button (Dropdown) -->
-        <div class="relative flex-1 group">
-          <button class="w-full py-1.5 text-gray-400 bg-gray-800 hover:bg-gray-700 hover:text-yellow-400 rounded transition-colors flex items-center justify-center" onclick="this.nextElementSibling.classList.toggle('hidden')">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </button>
-          <div class="hidden absolute top-full left-0 mt-1 w-40 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 overflow-hidden">
-            <button class="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors" onclick="runJetRenameAll(); this.parentElement.classList.add('hidden')">Jetle isimlendir</button>
-            <button class="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Detayla isimlendir</button>
-            <button class="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border-t border-gray-700" onclick="openApiKeyModal(); this.parentElement.classList.add('hidden')">API anahtarımı ayarla</button>
-          </div>
-        </div>
+        <!-- AI Rename Button: asks for the Gemini key on first use (see runJetRenameAll), otherwise renames directly -->
+        <button class="flex-1 py-1.5 px-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors flex items-center justify-center gap-1.5" onclick="runJetRenameAll()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Adlandır
+        </button>
       </div>
       <ul id="output-list" class="flex-1 overflow-y-auto p-3 space-y-2" hx-swap-oob="true">
         <li id="output-empty" class="text-xs text-gray-600 italic text-center mt-8">
@@ -322,21 +316,22 @@
 
   <!-- API KEY MODAL (BYOK — Gemini) -->
   <div id="api-key-modal" class="modal-overlay" onclick="closeApiKeyModal()">
-    <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col shadow-2xl"
-      style="max-width: 28rem; width: 100%;" onclick="event.stopPropagation()">
-      <h3 class="text-sm font-semibold text-gray-200 mb-2">Gemini API Anahtarı</h3>
-      <p class="text-xs text-gray-400 mb-4">
+    <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-7 flex flex-col shadow-2xl"
+      style="max-width: 32rem; width: 100%; font-size: 13px;" onclick="event.stopPropagation()">
+      <h3 class="font-semibold text-gray-200 mb-2" style="font-size: 16px;">Gemini API Anahtarı</h3>
+      <p class="text-gray-400 mb-4" style="font-size: 13px;">
         Akıllı isimlendirme için kendi Gemini API anahtarınızı kullanırsınız. Anahtar yalnızca bu
         tarayıcıda saklanır; sunucuya veya veritabanına asla yazılmaz.
       </p>
       <input id="api-key-input" type="password" autocomplete="off"
-        class="bg-gray-800 border border-gray-700 text-white text-sm rounded px-3 py-2 mb-4 focus:outline-none focus:border-blue-500"
+        class="bg-gray-800 border border-gray-700 text-white rounded px-3 py-2.5 mb-4 focus:outline-none focus:border-blue-500"
+        style="font-size: 13px;"
         placeholder="AIza...">
       <div class="flex justify-between items-center gap-2">
-        <button type="button" class="text-xs text-red-400 hover:text-red-300" onclick="clearApiKey()">Anahtarı sil</button>
+        <button type="button" class="text-red-400 hover:text-red-300" style="font-size: 13px;" onclick="clearApiKey()">Anahtarı sil</button>
         <div class="flex gap-2">
-          <button type="button" class="px-3 py-1.5 text-xs text-gray-300 hover:text-white" onclick="closeApiKeyModal()">Vazgeç</button>
-          <button type="button" class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold" onclick="saveApiKey()">Kaydet</button>
+          <button type="button" class="px-3 py-1.5 text-gray-300 hover:text-white" style="font-size: 13px;" onclick="closeApiKeyModal()">Vazgeç</button>
+          <button type="button" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold" style="font-size: 13px;" onclick="saveApiKey()">Kaydet</button>
         </div>
       </div>
     </div>
@@ -1677,7 +1672,6 @@
     // BATCH MODE LOGIC
     function toggleBatchMode() {
         isBatchMode = !isBatchMode;
-        const btn = document.getElementById('btn-batch-mode');
         const uploadSection = document.getElementById('drop-zone');
         const uploadStatus = document.getElementById('upload-status');
         const batchNavUI = document.getElementById('batch-nav-ui');
@@ -1685,9 +1679,6 @@
         document.body.classList.remove('sidebar-open'); // reveal the grid on mobile after toggling from the drawer
 
         if (isBatchMode) {
-            btn.classList.add('text-white', 'bg-blue-600', 'border-blue-500');
-            btn.classList.remove('text-gray-400', 'bg-gray-800');
-            
             // Backup current viewer state
             const firstCard = document.querySelector('.page-card');
             if (firstCard && firstCard.dataset.pdfId) {
@@ -1712,9 +1703,6 @@
             // Auto focus input when entering batch mode
             setTimeout(() => document.getElementById('batch-name-input').focus(), 50);
         } else {
-            btn.classList.remove('text-white', 'bg-blue-600', 'border-blue-500');
-            btn.classList.add('text-gray-400', 'bg-gray-800');
-            
             uploadSection.classList.remove('hidden');
             uploadStatus.classList.remove('hidden');
             batchNavUI.classList.add('hidden');
