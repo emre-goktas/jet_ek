@@ -25,7 +25,7 @@
       ↓ İndir
     </button>
     <button
-      onclick="openRenameModal('{{ file_id }}', '{{ filename }}', {{ page_count | default(1) }})"
+      onclick="openRenameModal('{{ file_id }}', '{{ custom_name | default('') or filename }}', {{ page_count | default(1) }})"
       class="rename-btn p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded transition-colors"
       data-file-id="{{ file_id }}"
       data-page-count="{{ page_count | default(1) }}"

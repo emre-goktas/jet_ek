@@ -192,6 +192,17 @@
   color: #93c5fd;
 }
 
+.page-context-menu button.delete-action {
+  color: #f87171;
+  /* red-400 */
+  font-weight: 600;
+}
+
+.page-context-menu button.delete-action:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
 .page-context-menu .context-menu-divider {
   height: 1px;
   background: #374151;

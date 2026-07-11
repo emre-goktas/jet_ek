@@ -151,30 +151,6 @@
           <span id="selection-info" class="text-sm text-gray-400 shrink-0 whitespace-nowrap">
             Seçmek için sayfalara tıklayın.
           </span>
-          <div id="batch-nav-ui" class="hidden flex flex-col justify-center gap-1 border-l border-gray-700 pl-3 ml-2 w-full sm:w-auto">
-            <div class="flex flex-wrap gap-2">
-              <div class="relative w-full sm:w-auto sm:flex-1 sm:min-w-[220px] sm:max-w-[576px]">
-                <input type="text" id="batch-name-input"
-                  class="w-full bg-gray-800 text-gray-200 px-3 py-3 rounded-lg text-base font-medium border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors pr-10"
-                  placeholder="Grup Adı"
-                  onchange="renameActiveBatch(this.value)" />
-                <span id="batch-nav-status" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-mono">0/0</span>
-              </div>
-              <button id="btn-update-batch"
-                class="action-btn bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shrink-0"
-                onclick="updateActiveBatch()" title="Bu gruptaki döndürme / silme / sıralama değişikliklerini kaydet">
-                Güncelle
-              </button>
-            </div>
-            <div class="flex items-center gap-2 justify-center">
-              <button onclick="prevBatch()" class="text-gray-400 hover:text-white p-1 bg-gray-800 hover:bg-gray-700 rounded transition-colors flex items-center justify-center border border-gray-700 w-8 h-6" title="Önceki Grup (Alt + Sol)">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
-              </button>
-              <button onclick="nextBatch()" class="text-gray-400 hover:text-white p-1 bg-gray-800 hover:bg-gray-700 rounded transition-colors flex items-center justify-center border border-gray-700 w-8 h-6" title="Sonraki Grup (Alt + Sağ)">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
-              </button>
-            </div>
-          </div>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
@@ -228,7 +204,34 @@
       </p>
     </div>
     
-    <!-- BATCH MODE NAVIGATION UI MOVED TO TOOLBAR -->
+    <!-- Batch Mode footer strip: replaces the upload dropzone while a group is
+         open, since you can't upload new files mid-batch-edit anyway. Starts
+         flush with the viewer column above it (not under the sidebar) once the
+         sidebar is a static in-flow column at lg+ — 14.5rem = the sidebar's
+         16rem (w-64) minus this footer's own 1.5rem (sm:px-6) left padding. -->
+    <div id="batch-nav-ui" class="hidden flex items-center gap-2 lg:ml-[14.5rem]">
+      <button onclick="prevBatch()" class="h-10 w-10 shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 transition-colors" title="Önceki Grup (Alt + Sol)">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+      </button>
+
+      <div class="relative flex-1 min-w-0">
+        <input type="text" id="batch-name-input"
+          class="w-full h-10 bg-gray-800 text-gray-200 pl-3 pr-14 rounded-lg text-sm font-medium border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
+          placeholder="Grup Adı"
+          onchange="renameActiveBatch(this.value)" />
+        <span id="batch-nav-status" class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-mono">0/0</span>
+      </div>
+
+      <button id="btn-update-batch"
+        class="action-btn h-10 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shrink-0"
+        onclick="updateActiveBatch()" title="Bu gruptaki döndürme / silme / sıralama değişikliklerini kaydet">
+        Güncelle
+      </button>
+
+      <button onclick="nextBatch()" class="h-10 w-10 shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 transition-colors" title="Sonraki Grup (Alt + Sağ)">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+      </button>
+    </div>
 
     <div id="upload-status" class="text-xs text-center mt-2 text-gray-500 hidden"></div>
   </footer>
@@ -329,9 +332,10 @@
       <button type="button" class="text-blue-400 hover:text-blue-300 underline font-bold mb-4 text-left w-fit" style="font-size: 14px;" onclick="openApiKeyGuideModal()">API anahtarı nasıl alınır?</button>
 
       <input id="api-key-input" type="password" autocomplete="off"
-        class="bg-gray-800 border border-gray-700 text-white rounded px-3.5 py-3 mb-5 focus:outline-none focus:border-blue-500"
+        class="bg-gray-800 border border-gray-700 text-white rounded px-3.5 py-3 mb-1.5 focus:outline-none focus:border-blue-500"
         style="font-size: 15px;"
         placeholder="AIza...">
+      <p id="api-key-hint" class="text-gray-500 mb-5" style="font-size: 12px;"></p>
       <div class="flex justify-between items-center gap-2">
         <button type="button" class="text-red-400 hover:text-red-300" style="font-size: 14px;" onclick="clearApiKey()">Anahtarı sil</button>
         <div class="flex gap-2">
@@ -402,6 +406,9 @@
     <button onclick="contextMenuAction('rotate-right')"><span>↻</span> Sağa Döndür</button>
     <div class="context-menu-divider"></div>
     <button class="extract-action" onclick="contextMenuAction('extract')"><span>✂</span> Ayıkla</button>
+    <div class="context-menu-divider"></div>
+    <button onclick="contextMenuAction('clear-selection')"><span>⬚</span> Seçimi Temizle</button>
+    <button class="delete-action" onclick="contextMenuAction('delete')"><span>🗑</span> Sil</button>
   </div>
 
   <script>
@@ -893,6 +900,23 @@
           updateSelectionInfo();
         }
         doExtract();
+      } else if (action === 'clear-selection') {
+        clearSelection();
+      } else if (action === 'delete') {
+        // Right-clicking a page that's part of the current multi-selection deletes
+        // the whole selection, same convention as 'extract' above; otherwise just
+        // the one page under the cursor.
+        const targets = selectedPages.has(card.id)
+          ? Array.from(document.querySelectorAll('.page-card'))
+              .filter(c => selectedPages.has(c.id) && !c.classList.contains('extracted-page'))
+          : [card];
+        markPagesDeleted(targets);
+        showStatus(
+          isBatchMode
+            ? `✓ ${targets.length} sayfa silindi — kalıcı olması için "Güncelle"ye basın.`
+            : `✓ ${targets.length} sayfa görünümden kaldırıldı.`,
+          'text-green-400'
+        );
       }
     }
 
@@ -924,9 +948,21 @@
       return (localStorage.getItem(GEMINI_KEY_STORAGE) || '').trim();
     }
 
+    // Surfaces the tail of the currently-stored key so a save can be visually
+    // confirmed without exposing the full value (input stays type="password").
+    function updateApiKeyHint() {
+      const hint = document.getElementById('api-key-hint');
+      if (!hint) return;
+      const key = getGeminiApiKey();
+      hint.textContent = key
+        ? `Bu tarayıcıda kayıtlı anahtar: ...${key.slice(-6)}`
+        : 'Bu tarayıcıda kayıtlı bir anahtar yok.';
+    }
+
     function openApiKeyModal() {
       const input = document.getElementById('api-key-input');
       if (input) input.value = getGeminiApiKey();
+      updateApiKeyHint();
       const m = document.getElementById('api-key-modal');
       if (m) m.classList.add('active');
       document.body.classList.add('modal-open');
@@ -946,6 +982,7 @@
       } else {
         localStorage.removeItem(GEMINI_KEY_STORAGE);
       }
+      updateApiKeyHint();
       closeApiKeyModal();
     }
 
@@ -953,6 +990,7 @@
       localStorage.removeItem(GEMINI_KEY_STORAGE);
       const input = document.getElementById('api-key-input');
       if (input) input.value = '';
+      updateApiKeyHint();
       closeApiKeyModal();
     }
 
@@ -1259,6 +1297,27 @@
         extractedPageIndices[pid].add(idx);
         card.classList.add('extracted-page');
       });
+    }
+
+    // Right-click "Sil": hides the given cards from the grid using the exact same
+    // extracted-page mechanism as a real extraction (same class, same tracking map),
+    // so every existing filter (selection, gatherCurrentGridPages, reconciliation
+    // after a re-render) already treats them as gone with no extra bookkeeping. There's
+    // no outputSourcePages entry since there's no output to undo it from — in Batch
+    // Mode the removal only becomes permanent once "Güncelle" is pressed (same as any
+    // other grid edit there); outside Batch Mode nothing is ever persisted, since the
+    // original upload is meant to stay intact and reusable for further extractions.
+    function markPagesDeleted(cardEls) {
+      cardEls.forEach(card => {
+        const pid = card.dataset.pdfId;
+        const idx = parseInt(card.dataset.pageIndex);
+        if (!extractedPageIndices[pid]) extractedPageIndices[pid] = new Set();
+        extractedPageIndices[pid].add(idx);
+        card.classList.add('extracted-page');
+        selectedPages.delete(card.id);
+      });
+      updateHighlight();
+      updateSelectionInfo();
     }
 
     // Reverses markPagesExtracted for outputKey: un-hides its source pages (if their

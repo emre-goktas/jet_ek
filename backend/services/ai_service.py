@@ -93,7 +93,7 @@ def _clean_ai_name(new_name: str) -> str:
 
 def jet_rename_pdf(file_id: str, api_key: str, user_email: str) -> str:
     """
-    Extracts the first page of the given PDF, sends it to Gemini 2.5 Flash,
+    Extracts the first page of the given PDF, sends it to Gemini Flash,
     gets a concise filename, renames the file on disk, logs it, and returns the new name.
     """
     gemini_file = None
@@ -115,7 +115,7 @@ def jet_rename_pdf(file_id: str, api_key: str, user_email: str) -> str:
         # 4. Generate content
         prompt = RENAME_PROMPT + LANDSCAPE_HINT if is_landscape else RENAME_PROMPT
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-flash-latest',
             contents=[gemini_file, prompt]
         )
         duration_ms = round((time.monotonic() - t0) * 1000)
@@ -210,7 +210,7 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str, user_email: str) -> 
         contents.append(RENAME_BATCH_PROMPT)
 
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-flash-latest',
             contents=contents
         )
         # Shared across every file in this batch — they all became available at the
