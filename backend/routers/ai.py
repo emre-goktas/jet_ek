@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import logging
 
 from backend.services.ai_service import jet_rename_pdf, jet_rename_pdf_batch
+from backend.services import auth_service
 from backend.templating import templates
 from backend.rate_limit import limiter
 
@@ -11,6 +12,15 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 MISSING_KEY_DETAIL = "Lütfen Gemini API anahtarınızı ayarlayın."
+
+
+def _current_user_email(request: Request) -> str:
+    """Falls back to "anonymous" rather than raising: this router is already
+    gated behind auth when it's enabled, so a missing user here only happens
+    in the auth-disabled dev/deploy mode — logging shouldn't be the thing
+    that breaks renaming in that mode."""
+    user = auth_service.get_current_user_optional(request)
+    return user["email"] if user else "anonymous"
 
 @router.post("/jet-rename/{file_id}", response_class=HTMLResponse)
 @limiter.limit("10/minute")
@@ -22,7 +32,7 @@ def jet_rename(file_id: str, request: Request, x_gemini_api_key: str | None = He
     if not x_gemini_api_key:
         raise HTTPException(status_code=400, detail=MISSING_KEY_DETAIL)
     try:
-        new_filename, label, page_count, custom_name = jet_rename_pdf(file_id, x_gemini_api_key)
+        new_filename, label, page_count, custom_name = jet_rename_pdf(file_id, x_gemini_api_key, _current_user_email(request))
         context = {
             "request": request,
             "file_id": file_id,
@@ -50,7 +60,7 @@ def jet_rename_batch(data: BatchRenameRequest, request: Request, x_gemini_api_ke
     if not x_gemini_api_key:
         raise HTTPException(status_code=400, detail=MISSING_KEY_DETAIL)
     try:
-        results = jet_rename_pdf_batch(data.file_ids, x_gemini_api_key)
+        results = jet_rename_pdf_batch(data.file_ids, x_gemini_api_key, _current_user_email(request))
         response_htmls = {}
         for file_id, info in results.items():
             context = {

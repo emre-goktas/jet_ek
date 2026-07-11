@@ -1,16 +1,14 @@
 import json
 import os
 import tempfile
-from pathlib import Path
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pymupdf
 from google import genai
 
+from backend.services import db_service
 from backend.services.pdf_service import get_pdf_info, rename_output
-
-DATA_DIR = Path(__file__).parent.parent / "data"
-LOG_FILE_PATH = DATA_DIR / "ai_logs.jsonl"
 
 def get_client(api_key: str):
     """BYOK: each request brings its own Gemini key (header-passthrough from the
@@ -21,27 +19,19 @@ def get_client(api_key: str):
         raise ValueError("Gemini API key is missing.")
     return genai.Client(api_key=api_key)
 
-def _append_log(entry: dict):
-    """Appends one JSON object per line (JSONL) so a partial/failed write only
-    corrupts the last entry instead of the entire log history."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(LOG_FILE_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+def log_ai_rename(user_email: str, file_id: str, original_name: str, new_name: str, duration_ms: int, batch_size: int = 1):
+    """Records a successful AI rename in the ai_rename_logs table."""
+    db_service.log_gemini_rename_safe(
+        user_email, file_id, original_name, new_name,
+        success=True, duration_ms=duration_ms, batch_size=batch_size,
+    )
 
-def log_ai_rename(file_id: str, original_name: str, new_name: str):
-    """Appends the AI renaming result to the log."""
-    _append_log({
-        "file_id": file_id,
-        "original_name": original_name,
-        "new_name": new_name,
-    })
-
-def log_ai_error(file_id: str, error_msg: str):
-    """Appends an AI error to the log."""
-    _append_log({
-        "file_id": file_id,
-        "error": error_msg,
-    })
+def log_ai_error(user_email: str, file_id: str, error_msg: str, duration_ms: int | None = None, batch_size: int = 1):
+    """Records a failed AI rename attempt in the ai_rename_logs table."""
+    db_service.log_gemini_rename_safe(
+        user_email, file_id, None, None,
+        success=False, error_message=error_msg, duration_ms=duration_ms, batch_size=batch_size,
+    )
 
 def _extract_first_page(path) -> tuple[str, bool]:
     """Extracts the first page of the PDF at path into a new temporary PDF file.
@@ -101,7 +91,7 @@ def _clean_ai_name(new_name: str) -> str:
         new_name = new_name[:-4].strip()
     return new_name
 
-def jet_rename_pdf(file_id: str, api_key: str) -> str:
+def jet_rename_pdf(file_id: str, api_key: str, user_email: str) -> str:
     """
     Extracts the first page of the given PDF, sends it to Gemini 2.5 Flash,
     gets a concise filename, renames the file on disk, logs it, and returns the new name.
@@ -109,6 +99,7 @@ def jet_rename_pdf(file_id: str, api_key: str) -> str:
     gemini_file = None
     temp_pdf_path = None
     client = None
+    t0 = time.monotonic()
     try:
         client = get_client(api_key)
 
@@ -127,6 +118,7 @@ def jet_rename_pdf(file_id: str, api_key: str) -> str:
             model='gemini-2.5-flash',
             contents=[gemini_file, prompt]
         )
+        duration_ms = round((time.monotonic() - t0) * 1000)
 
         new_name = _clean_ai_name(response.text.strip())
 
@@ -140,14 +132,14 @@ def jet_rename_pdf(file_id: str, api_key: str) -> str:
         doc.close()
 
         # 6. Log the change
-        log_ai_rename(file_id, original_filename, new_name)
+        log_ai_rename(user_email, file_id, original_filename, new_name, duration_ms)
 
         return new_filename, label, page_count, metadata.get("custom_name", "")
 
     except Exception as e:
         import traceback
         err = traceback.format_exc()
-        log_ai_error(file_id, err)
+        log_ai_error(user_email, file_id, err, duration_ms=round((time.monotonic() - t0) * 1000))
         raise ValueError(f"Failed to rename file: {e}")
     finally:
         if temp_pdf_path and os.path.exists(temp_pdf_path):
@@ -162,7 +154,7 @@ def jet_rename_pdf(file_id: str, api_key: str) -> str:
             except Exception:
                 pass
 
-def jet_rename_pdf_batch(file_ids: list[str], api_key: str) -> dict:
+def jet_rename_pdf_batch(file_ids: list[str], api_key: str, user_email: str) -> dict:
     """
     Extracts the first page of multiple PDFs, uploads them to Gemini (in parallel),
     requests structured JSON for all renames at once.
@@ -173,13 +165,15 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str) -> dict:
 
     uploaded_files = []
     temp_files = []
+    batch_size = len(file_ids)
+    t0 = time.monotonic()
 
     try:
         try:
             client = get_client(api_key)
         except Exception as e:
             for file_id in file_ids:
-                log_ai_error(file_id, f"Failed to initialize Gemini client: {e}")
+                log_ai_error(user_email, file_id, f"Failed to initialize Gemini client: {e}", batch_size=batch_size)
             raise
 
         def _prepare_one(file_id: str):
@@ -206,7 +200,8 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str) -> dict:
                     contents.append(marker)
                     contents.append(gemini_file)
                 except Exception as e:
-                    log_ai_error(file_id, f"Failed to prepare batch file: {e}")
+                    log_ai_error(user_email, file_id, f"Failed to prepare batch file: {e}",
+                                 duration_ms=round((time.monotonic() - t0) * 1000), batch_size=batch_size)
 
         if not contents:
             return {}
@@ -218,6 +213,9 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str) -> dict:
             model='gemini-2.5-flash',
             contents=contents
         )
+        # Shared across every file in this batch — they all became available at the
+        # same moment, when this one combined Gemini call returned.
+        duration_ms = round((time.monotonic() - t0) * 1000)
 
         # 3. Parse JSON response
         text = response.text.strip()
@@ -248,7 +246,7 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str) -> dict:
                 doc.close()
 
                 original_filename = file_info_map[file_id]["original_filename"]
-                log_ai_rename(file_id, original_filename, new_name)
+                log_ai_rename(user_email, file_id, original_filename, new_name, duration_ms, batch_size=batch_size)
 
                 results[file_id] = {
                     "filename": new_filename,
@@ -257,7 +255,8 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str) -> dict:
                     "custom_name": metadata.get("custom_name", ""),
                 }
             except Exception as inner_e:
-                log_ai_error(file_id, f"Failed applying rename: {inner_e}")
+                log_ai_error(user_email, file_id, f"Failed applying rename: {inner_e}",
+                             duration_ms=duration_ms, batch_size=batch_size)
 
         return results
 
