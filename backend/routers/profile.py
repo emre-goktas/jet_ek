@@ -11,6 +11,7 @@ from pydantic import BaseModel, field_validator
 
 from backend.services import auth_service, db_service
 from backend.templating import templates
+from backend.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -99,6 +100,7 @@ class ProfileRequest(BaseModel):
 
 
 @router.post("/api/profile")
+@limiter.limit("20/minute")
 async def save_profile(req: ProfileRequest, request: Request):
     user = auth_service.get_current_user(request)
 

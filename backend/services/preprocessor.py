@@ -1,4 +1,5 @@
 import fitz
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -56,5 +57,6 @@ def preprocess_to_pdf(filepath: Path, original_filename: str) -> tuple[Path, str
             f.write(pdf_bytes)
 
         return Path(temp_pdf_path), final_filename
-    except Exception as e:
-        raise ValueError(f"Could not convert TIFF to pdf: {e}")
+    except Exception:
+        logging.exception("TIFF to PDF conversion failed")
+        raise ValueError("Could not convert TIFF to PDF. The file may be corrupted.")

@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200MB — generous for a large scanned TIFF/PDF,
+# small enough that a handful of concurrent uploads can't fill the disk (there was
+# previously no cap at all: a single authenticated request could write an unbounded
+# amount of data).
+
 
 @router.post("/upload")
 @limiter.limit("20/minute")
@@ -25,8 +30,12 @@ async def upload_pdf(request: Request, file: UploadFile = File(...), current_use
     fd, temp_path = tempfile.mkstemp()
     temp_pdf_path = None
     try:
+        total_bytes = 0
         with os.fdopen(fd, 'wb') as out_file:
             while chunk := await file.read(1024 * 1024):  # 1MB chunks
+                total_bytes += len(chunk)
+                if total_bytes > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="File too large (max 200MB).")
                 out_file.write(chunk)
 
         # Still verify if it's completely empty

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from backend.services import auth_service
 from backend.templating import templates
+from backend.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -36,7 +37,8 @@ class GoogleAuthRequest(BaseModel):
 
 
 @router.post("/auth/google")
-async def auth_google(req: GoogleAuthRequest, response: Response):
+@limiter.limit("10/minute")
+async def auth_google(req: GoogleAuthRequest, request: Request, response: Response):
     try:
         claims = await auth_service.verify_google_id_token(req.credential)
     except Exception:

@@ -140,6 +140,7 @@ def save_upload(file_path: Path, original_name: str, user_dir: Path) -> tuple[st
 
     shutil.move(str(file_path), str(dest))
     _PATH_CACHE[pdf_id] = dest
+    save_metadata(pdf_id, {"original_filename": original_name}, user_dir)
 
     # Get page count
     with lock_file(dest):

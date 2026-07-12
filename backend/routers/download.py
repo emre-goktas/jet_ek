@@ -29,11 +29,9 @@ def download_pdf(file_id: str, request: Request, ek_no: int = None, current_user
     """Downloads the PDF file belonging to the specified file_id."""
     user_dir = pdf_service.user_storage_dir(current_user["email"])
     try:
-        path = pdf_service.get_output_path(file_id, user_dir)
-    except FileNotFoundError:
+        path, filename, _ = pdf_service.get_pdf_info(file_id, user_dir)
+    except (FileNotFoundError, ValueError):
         raise HTTPException(status_code=404, detail="File not found.")
-
-    filename = path.name.split("_", 1)[1] if "_" in path.name else path.name
 
     if ek_no is not None:
         filename = f"{ek_no:02d}_{filename}"

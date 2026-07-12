@@ -58,10 +58,14 @@ def _sweep_storage(max_age_seconds: float | None):
     """Deletes unlocked files from STORAGE_DIR. Covers both layouts: legacy
     flat-root files (pre-per-user-storage leftovers, glob at the root) and
     the current per-user user_*/ subdirectories. With max_age_seconds set,
-    only files older than that are touched (the 15-minute safety net); with
-    None, everything unlocked is wiped regardless of age (the nightly full
-    sweep — most output files should already be gone via /cleanup by then,
-    this is the backstop for abandoned/incomplete sessions)."""
+    only files older than that are touched; with None, every unlocked file is
+    wiped regardless of age. Age is judged by mtime, which pdf_service._touch
+    refreshes on every successful read/write of a file — so a small
+    max_age_seconds is not just "don't bother with young files," it is the
+    only thing standing between an in-flight download/render/AI-rename
+    (none of which hold lock_file for their full duration, e.g. download.py's
+    FileResponse streams after the handler returns) and secure_delete
+    overwriting that same file's bytes out from under the open read."""
     now = time.time()
     patterns = itertools.chain(
         STORAGE_DIR.glob("*.pdf"), STORAGE_DIR.glob("*.json"),
@@ -86,10 +90,17 @@ async def cleanup_old_files():
         await asyncio.sleep(900)
 
 
+NIGHTLY_SWEEP_MIN_IDLE_SECONDS = 180  # anything touched more recently than this survives
+# even the nightly sweep — comfortably longer than a single download/view/AI-rename could
+# plausibly take, so it never races a real in-flight request (see _sweep_storage docstring).
+
+
 async def nightly_full_cleanup():
-    """Once a day around 03:00 local time, wipes every unlocked file in
-    storage regardless of age — the harder guarantee behind the hourly
-    safety net above, so nothing from a finished session lingers overnight."""
+    """Once a day around 03:00 local time, wipes every file in storage that's
+    been idle for at least NIGHTLY_SWEEP_MIN_IDLE_SECONDS — the harder
+    guarantee behind the hourly safety net above, so nothing from a finished
+    session lingers overnight, without corrupting a document someone happens
+    to be downloading or AI-renaming at that exact moment."""
     while True:
         now = datetime.now()
         next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
@@ -97,7 +108,7 @@ async def nightly_full_cleanup():
             next_run += timedelta(days=1)
         await asyncio.sleep((next_run - now).total_seconds())
         try:
-            _sweep_storage(max_age_seconds=None)
+            _sweep_storage(max_age_seconds=NIGHTLY_SWEEP_MIN_IDLE_SECONDS)
         except Exception as e:
             logging.error(f"Nightly cleanup loop error: {e}")
 

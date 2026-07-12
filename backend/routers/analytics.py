@@ -7,11 +7,13 @@ used and how often, without designing a bespoke table per question up front.
 from fastapi import APIRouter, Request
 
 from backend.services import auth_service, db_service
+from backend.rate_limit import limiter
 
 router = APIRouter()
 
 
 @router.post("/api/events")
+@limiter.limit("120/minute")
 async def log_event(request: Request):
     """Body: {"event_type": str, "metadata": {...}}. Fire-and-forget from the
     client's perspective — always returns 200 even if logging itself fails,

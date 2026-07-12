@@ -565,27 +565,22 @@
     }
 
     function handleDrop(e) {
-      console.log('DEBUG: handleDrop called', e);
       e.preventDefault();
       const zone = document.getElementById('drop-zone');
       if (zone) zone.classList.remove('border-blue-400', 'bg-blue-950');
       const files = Array.from(e.dataTransfer.files);
-      console.log('DEBUG: handleDrop files:', files);
       if (files.length > 0) {
         processFiles(files);
       }
     }
 
     function uploadFile(input) {
-      console.log('DEBUG: uploadFile called, input value:', input.value);
       const zone = document.getElementById('drop-zone');
       if (zone) zone.classList.remove('border-blue-400', 'bg-blue-950');
       const files = Array.from(input.files);
-      console.log('DEBUG: uploadFile files:', files);
       if (files.length > 0) {
         processFiles(files);
       }
-      console.log('DEBUG: resetting input.value to empty string');
       input.value = ""; // reset
     }
     
@@ -1319,13 +1314,24 @@
       }
     }
 
+    // Minimal HTML-escape for text interpolated into innerHTML template literals —
+    // reuses the browser's own textContent->innerHTML encoding instead of a
+    // hand-rolled regex. Needed anywhere user-typed text (e.g. the custom filename
+    // field) gets interpolated into markup rather than assigned via textContent.
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
     function appendLoadingToOutputList(taskId, filename) {
       const list = document.getElementById('output-list');
       const empty = document.getElementById('output-empty');
       if (empty) empty.remove();
-      
+
       const wrapper = document.createElement('li');
       wrapper.id = `loading-task-${taskId}`;
+      const safeFilename = escapeHtml(filename);
       wrapper.innerHTML = `
         <div class="pdf-item opacity-75 border border-dashed border-gray-800 p-2.5 rounded-lg bg-gray-900/50 flex flex-col gap-2">
           <div class="flex items-start gap-2">
@@ -1334,7 +1340,7 @@
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
             </svg>
             <div class="flex-1 min-w-0">
-              <p class="text-xs font-medium text-gray-400 truncate" title="${filename}">${filename}</p>
+              <p class="text-xs font-medium text-gray-400 truncate" title="${safeFilename}">${safeFilename}</p>
               <p class="text-[10px] text-blue-400 font-semibold animate-pulse mt-0.5">İşleniyor...</p>
             </div>
           </div>
@@ -1469,27 +1475,6 @@
       selectedBatchIds.delete(fileId);
       updateBulkDownloadVisibility();
       refreshBatchNavStatus();
-    }
-
-    function handleLoadingFailure(taskId, errorMsg) {
-      const loader = document.getElementById(`loading-task-${taskId}`);
-      if (loader) {
-        loader.innerHTML = `
-          <div class="pdf-item border border-red-950/50 p-2.5 rounded-lg bg-red-950/20 flex flex-col gap-1.5">
-            <div class="flex items-start gap-2">
-              <svg class="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-              </svg>
-              <div class="flex-1 min-w-0">
-                <p class="text-xs font-medium text-red-400 truncate">Ayıklama Başarısız</p>
-                <p class="text-[10px] text-red-500 mt-0.5 line-clamp-2" title="${errorMsg}">${errorMsg}</p>
-              </div>
-            </div>
-            <button class="text-[10px] text-gray-500 hover:text-gray-400 self-end uppercase font-semibold" onclick="this.closest('li').remove(); updateBulkDownloadVisibility();">Kapat</button>
-          </div>
-        `;
-        updateBulkDownloadVisibility();
-      }
     }
 
     async function confirmExtract() {
@@ -2155,21 +2140,40 @@
         if (statusEl) statusEl.textContent = `${newIndex + 1} / ${total}`;
     }
 
+    // pageRotations deliberately survives switching away from a batch without
+    // clicking "Güncelle" (see persistPagesToBatch's scoped clear), so a page-card
+    // rebuilt by fetchAndRenderBatch can be re-created with a rotation already
+    // recorded under its id from a previous, unsaved visit. Without this, the fresh
+    // canvas renders unrotated (visually correct-looking) while gatherCurrentGridPages
+    // still reads the stale entry and silently ships that old rotation to the server
+    // on the next save — this re-applies the CSS transform so what's on screen always
+    // matches what pageRotations actually holds.
+    function reapplyStoredRotations(container) {
+      container.querySelectorAll('.page-card').forEach(card => {
+        const rotation = pageRotations[card.id];
+        if (rotation) {
+          const img = card.querySelector('.page-img');
+          if (img) img.style.transform = `rotate(${rotation}deg)`;
+        }
+      });
+    }
+
     async function fetchAndRenderBatch(fileId, filename) {
         try {
             const res = await fetch('/batch_viewer/' + fileId);
             if (!res.ok) throw new Error('Failed to load batch view');
-            
+
             // Reusing HTMX logic by manually processing the response or just injecting HTML
             // The endpoint should return partials/viewer.html
             const html = await res.text();
-            
+
             // Extract the HX-Trigger headers to trigger viewerReady manually
             const pageCountMatch = html.match(/data-page-count="(\d+)"/);
             const pdfIdMatch = html.match(/data-pdf-id="([^"]+)"/);
-            
+
             const viewerContainer = document.getElementById('viewer');
             viewerContainer.innerHTML = html; // inject into viewer container
+            reapplyStoredRotations(viewerContainer);
 
             // A Batch Mode Update may have rewritten this same pdf_id's bytes in place —
             // drop any cached pdf.js document for it so the freshly-injected canvases

@@ -1,14 +1,16 @@
 import json
+import logging
 import os
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 
 import pymupdf
 from google import genai
 
 from backend.services import db_service
-from backend.services.pdf_service import get_pdf_info, rename_output, user_storage_dir
+from backend.services.pdf_service import get_pdf_info, lock_file, rename_output, user_storage_dir
 
 def get_client(api_key: str):
     """BYOK: each request brings its own Gemini key (header-passthrough from the
@@ -45,16 +47,24 @@ def _extract_first_page(path) -> tuple[str, bool]:
     file."""
     fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
-    src_doc = pymupdf.open(str(path))
     try:
-        temp_doc = pymupdf.open()
-        temp_doc.insert_pdf(src_doc, from_page=0, to_page=0)
-        rect = temp_doc[0].rect
-        is_landscape = rect.width > rect.height
-        temp_doc.save(temp_pdf_path)
-        temp_doc.close()
-    finally:
-        src_doc.close()
+        src_doc = pymupdf.open(str(path))
+        try:
+            temp_doc = pymupdf.open()
+            temp_doc.insert_pdf(src_doc, from_page=0, to_page=0)
+            rect = temp_doc[0].rect
+            is_landscape = rect.width > rect.height
+            temp_doc.save(temp_pdf_path)
+            temp_doc.close()
+        finally:
+            src_doc.close()
+    except Exception:
+        # mkstemp already created temp_pdf_path on disk before any of the above could
+        # fail (e.g. path was concurrently deleted) — without this it leaks an empty
+        # temp PDF, since the caller never learns temp_pdf_path exists to clean it up.
+        if os.path.exists(temp_pdf_path):
+            os.remove(temp_pdf_path)
+        raise
     return temp_pdf_path, is_landscape
 
 LANDSCAPE_HINT = (
@@ -79,14 +89,15 @@ RENAME_PROMPT = (
 RENAME_BATCH_PROMPT = (
     "Burada birden fazla belgenin ilk sayfası var. Her belgeden önce o belgenin 'Document ID'si verilmiştir.\n"
     "Lütfen her bir belgeyi incele ve aşağıdaki kurallara göre resmi ve hukuki yazışma diline uygun olarak dosya adı(evrakın mahiyeti) üret:\n"
-    ""Belgenin header bölümünde Belgeyi hangi kurumun yazdığını, hitap kısmında(tarih sayıdan sonra sayfaya ortalanmış başlık gibi) kime yazıldığını tespit eedebilirsin"
+    "Belgenin header bölümünde Belgeyi hangi kurumun yazdığını, hitap kısmında(tarih sayıdan sonra sayfaya ortalanmış başlık gibi) kime yazıldığını tespit edebilirsin"
     "1. Eğer belgede Kurum Adı, Tarih, Sayı ve Konu gibi bilgiler netse: "
-     "'[Kurum Adı] nın,nün(gibi sonekler) [Kurum adı] ne, na(gibi ekler) [Tarih] tarihli [Sayı] sayılı [Konu] konulu yazısı' formatında oluştur.\n"
+    "'[Kurum Adı] nın,nün(gibi sonekler) [Kurum adı] ne, na(gibi ekler) [Tarih] tarihli [Sayı] sayılı [Konu] konulu yazısı' formatında oluştur.\n"
     "Örneğin [X] Başkanlığının [y] müdürlüğüne [tarih]li [sayı]lı [konu]lu yazısı"
     "2. Eğer resmi bilgiler yoksa belgenin ana başlığını ve varsa altındaki imzanın kime ait olduğunu tespit et. Belge bir "
     "kişiye veya firmaya aitse: '[Kişi/Firma/Unvan Adı] [Belge Başlığı/Türü]' formatında belirt.\n"
     "DİKKAT: Yalnızca geçerli bir JSON objesi döndür. JSON anahtarları (keys) verdiğim 'Document ID' olmalı, "
     "değerler (values) ise senin ürettiğin dosya adı olmalıdır. Hiçbir açıklama yapma ve json tagı kullanmadan sadece json objesini döndür."
+)
 
 def _clean_ai_name(new_name: str) -> str:
     new_name = str(new_name).replace('"', '').replace("'", '').replace('\n', ' ').strip()
@@ -110,24 +121,28 @@ def jet_rename_pdf(file_id: str, api_key: str, user_email: str) -> str:
         # 1. Get the target PDF path
         path, original_filename, _ = get_pdf_info(file_id, user_dir)
 
-        # 2. Extract only the first page into a temporary PDF to save tokens/time
-        temp_pdf_path, is_landscape = _extract_first_page(path)
+        # Held for the whole Gemini round-trip (which can take several seconds) so
+        # the periodic/nightly cleanup sweep can't delete this file out from under
+        # an in-flight rename — see pdf_service.lock_file / _sweep_storage.
+        with lock_file(path):
+            # 2. Extract only the first page into a temporary PDF to save tokens/time
+            temp_pdf_path, is_landscape = _extract_first_page(path)
 
-        # 3. Upload the temporary PDF to Gemini
-        gemini_file = client.files.upload(file=temp_pdf_path, config={"mime_type": "application/pdf"})
+            # 3. Upload the temporary PDF to Gemini
+            gemini_file = client.files.upload(file=temp_pdf_path, config={"mime_type": "application/pdf"})
 
-        # 4. Generate content
-        prompt = RENAME_PROMPT + LANDSCAPE_HINT if is_landscape else RENAME_PROMPT
-        response = client.models.generate_content(
-            model='gemini-flash-latest',
-            contents=[gemini_file, prompt]
-        )
-        duration_ms = round((time.monotonic() - t0) * 1000)
+            # 4. Generate content
+            prompt = RENAME_PROMPT + LANDSCAPE_HINT if is_landscape else RENAME_PROMPT
+            response = client.models.generate_content(
+                model='gemini-flash-latest',
+                contents=[gemini_file, prompt]
+            )
+            duration_ms = round((time.monotonic() - t0) * 1000)
 
-        new_name = _clean_ai_name(response.text.strip())
+            new_name = _clean_ai_name(response.text.strip())
 
-        # 5. Rename the physical file and metadata
-        new_path, new_filename, metadata = rename_output(file_id, new_name, user_dir)
+            # 5. Rename the physical file and metadata
+            new_path, new_filename, metadata = rename_output(file_id, new_name, user_dir)
         label = metadata.get("label", "PDF")
 
         # Get page count
@@ -156,7 +171,7 @@ def jet_rename_pdf(file_id: str, api_key: str, user_email: str) -> str:
             try:
                 client.files.delete(name=gemini_file.name)
             except Exception:
-                pass
+                logging.warning(f"Failed to delete Gemini cloud file {gemini_file.name} for user {user_email}", exc_info=True)
 
 def jet_rename_pdf_batch(file_ids: list[str], api_key: str, user_email: str) -> dict:
     """
@@ -211,57 +226,69 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str, user_email: str) -> 
         if not contents:
             return {}
 
-        # 2. Generate content
-        contents.append(RENAME_BATCH_PROMPT)
+        # 2. Generate content — hold every prepared file's source lock for the
+        # network round-trip and the renames applied below, so the periodic/nightly
+        # cleanup sweep can't delete a source out from under an in-flight batch
+        # (see pdf_service.lock_file / _sweep_storage). Re-resolves each path rather
+        # than threading it out of _prepare_one, since _resolve_path caches it anyway.
+        with ExitStack() as lock_stack:
+            for fid in file_info_map:
+                try:
+                    src_path, _, _ = get_pdf_info(fid, user_dir)
+                    lock_stack.enter_context(lock_file(src_path))
+                except (FileNotFoundError, ValueError):
+                    pass
 
-        response = client.models.generate_content(
-            model='gemini-flash-latest',
-            contents=contents
-        )
-        # Shared across every file in this batch — they all became available at the
-        # same moment, when this one combined Gemini call returned.
-        duration_ms = round((time.monotonic() - t0) * 1000)
+            contents.append(RENAME_BATCH_PROMPT)
 
-        # 3. Parse JSON response
-        text = response.text.strip()
-        if text.startswith('```json'):
-            text = text[7:]
-        if text.endswith('```'):
-            text = text[:-3]
-        text = text.strip()
+            response = client.models.generate_content(
+                model='gemini-flash-latest',
+                contents=contents
+            )
+            # Shared across every file in this batch — they all became available at the
+            # same moment, when this one combined Gemini call returned.
+            duration_ms = round((time.monotonic() - t0) * 1000)
 
-        try:
-            renames = json.loads(text)
-        except json.JSONDecodeError:
-            raise ValueError(f"Failed to parse JSON from AI response: {text}")
-
-        results = {}
-        # 4. Apply renames
-        for file_id, new_name in renames.items():
-            if file_id not in file_info_map:
-                continue
+            # 3. Parse JSON response
+            text = response.text.strip()
+            if text.startswith('```json'):
+                text = text[7:]
+            if text.endswith('```'):
+                text = text[:-3]
+            text = text.strip()
 
             try:
-                new_name = _clean_ai_name(new_name)
-                new_path, new_filename, metadata = rename_output(file_id, new_name, user_dir)
-                label = metadata.get("label", "PDF")
+                renames = json.loads(text)
+            except json.JSONDecodeError:
+                raise ValueError(f"Failed to parse JSON from AI response: {text}")
 
-                doc = pymupdf.open(str(new_path))
-                page_count = len(doc)
-                doc.close()
+            results = {}
+            # 4. Apply renames
+            for file_id, new_name in renames.items():
+                if file_id not in file_info_map:
+                    continue
 
-                original_filename = file_info_map[file_id]["original_filename"]
-                log_ai_rename(user_email, file_id, original_filename, new_name, duration_ms, batch_size=batch_size)
+                try:
+                    new_name = _clean_ai_name(new_name)
+                    new_path, new_filename, metadata = rename_output(file_id, new_name, user_dir)
+                    label = metadata.get("label", "PDF")
 
-                results[file_id] = {
-                    "filename": new_filename,
-                    "label": label,
-                    "page_count": page_count,
-                    "custom_name": metadata.get("custom_name", ""),
-                }
-            except Exception as inner_e:
-                log_ai_error(user_email, file_id, f"Failed applying rename: {inner_e}",
-                             duration_ms=duration_ms, batch_size=batch_size)
+                    doc = pymupdf.open(str(new_path))
+                    page_count = len(doc)
+                    doc.close()
+
+                    original_filename = file_info_map[file_id]["original_filename"]
+                    log_ai_rename(user_email, file_id, original_filename, new_name, duration_ms, batch_size=batch_size)
+
+                    results[file_id] = {
+                        "filename": new_filename,
+                        "label": label,
+                        "page_count": page_count,
+                        "custom_name": metadata.get("custom_name", ""),
+                    }
+                except Exception as inner_e:
+                    log_ai_error(user_email, file_id, f"Failed applying rename: {inner_e}",
+                                 duration_ms=duration_ms, batch_size=batch_size)
 
         return results
 
@@ -276,4 +303,4 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str, user_email: str) -> 
             try:
                 client.files.delete(name=gfile.name)
             except Exception:
-                pass
+                logging.warning(f"Failed to delete Gemini cloud file {gfile.name} for user {user_email}", exc_info=True)
