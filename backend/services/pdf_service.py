@@ -358,31 +358,15 @@ def rename_output(file_id: str, new_display_name: str, user_dir: Path) -> tuple[
     return new_path, new_filename, metadata
 
 
-def delete_output(file_id: str, user_dir: Path) -> None:
-    """Best-effort full removal of an output once its content has been
-    delivered to the client (e.g. a ZIP built client-side, or a completed
-    single-file download): shreds the PDF bytes, its metadata sidecar, and
-    drops the cached path. Silently no-ops for a missing/invalid/locked
-    file_id, and for any file_id that doesn't resolve within user_dir (i.e.
-    belongs to someone else) — this is opportunistic cleanup, not a source of
-    truth the caller needs to retry on failure, and it must never let one
-    user delete another's file just by naming its id.
-    """
-    try:
-        path = get_output_path(file_id, user_dir)
-    except (FileNotFoundError, ValueError):
-        return
-
-    if is_file_locked(path):
-        return
-
-    secure_delete(path)
-
-    json_path = user_dir / f"{file_id}.json"
-    if json_path.exists():
-        secure_delete(json_path)
-
-    _PATH_CACHE.pop(file_id, None)
+def forget_cached_path(path: Path) -> None:
+    """Drops any _PATH_CACHE entry pointing at path. Called by the cleanup sweep
+    (main.py's _sweep_storage) right after secure_delete, so the cache doesn't
+    accumulate one dead Path entry per file for the life of the process — a
+    stale entry is otherwise harmless (_resolve_path already re-checks
+    cached.exists() before trusting it) but never gets evicted on its own."""
+    stale_ids = [k for k, v in _PATH_CACHE.items() if v == path]
+    for k in stale_ids:
+        _PATH_CACHE.pop(k, None)
 
 
 def mark_delivered(file_id: str, user_dir: Path) -> None:
@@ -396,8 +380,8 @@ def mark_delivered(file_id: str, user_dir: Path) -> None:
     so treating that signal as a countdown-start instead of an instant-delete
     trigger leaves a real margin for a slow connection or a stalled tab to
     still recover by re-fetching before the file is actually gone. Silently
-    no-ops for a missing/invalid/other-user's file_id — same best-effort,
-    non-authoritative semantics as delete_output.
+    no-ops for a missing/invalid/other-user's file_id — best-effort,
+    non-authoritative, same as the rest of this module's cleanup helpers.
     """
     try:
         path = get_output_path(file_id, user_dir)

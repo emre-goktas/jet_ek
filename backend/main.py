@@ -21,7 +21,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from backend.routers import upload, pages, extract, download, templates as templates_router, ai, auth, profile, analytics
-from backend.services.pdf_service import STORAGE_DIR, is_file_locked, secure_delete
+from backend.services.pdf_service import STORAGE_DIR, forget_cached_path, is_file_locked, secure_delete
 from backend.services import auth_service, db_service
 from backend.templating import templates
 from backend.rate_limit import limiter
@@ -76,6 +76,7 @@ def _sweep_storage(max_age_seconds: float | None):
             if max_age_seconds is None or now - p.stat().st_mtime > max_age_seconds:
                 if not is_file_locked(p):
                     secure_delete(p)
+                    forget_cached_path(p)
         except Exception as e:
             logging.warning(f"Cleanup failed for {p}: {e}")
 

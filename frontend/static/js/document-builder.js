@@ -751,6 +751,13 @@ async function buildDocxIndex(filesData) {
 
 // ─── ZIP assembly + download ────────────────────────────────────────────
 
+// Shared by the single-file download button (index.html) and the ZIP
+// packaging below — both prefix a delivered file's name with its two-digit
+// Ek No the same way.
+function ekPrefixedFilename(ekNo, filename) {
+  return `${String(ekNo).padStart(2, '0')}_${filename}`;
+}
+
 function triggerBlobDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -816,7 +823,7 @@ async function buildAndDownloadZip(numbered, fileIdFilter) {
           // original backend's per-file stamping fallback.
         }
       }
-      const zipFilename = `${String(f.ek_no).padStart(2, '0')}_${f.filename}`;
+      const zipFilename = ekPrefixedFilename(f.ek_no, f.filename);
       zipEntries[zipFilename] = pdfBytes;
     }
 

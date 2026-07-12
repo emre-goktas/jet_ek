@@ -457,14 +457,10 @@
     let pageRotations = {};
     let sortableInstance = null;
     let currentCustomName = '';
-    let fileCounter = 1;
-    let pendingFiles = [];
-    
+
     // Batch Mode variables
     let isBatchMode = false;
     let originalPdfId = null;
-    let originalPageCount = 0;
-    let originalFilename = '';
     let currentBatchIndex = -1;
 
     // ─── pdf.js client-side page rendering ───────────────────────────────
@@ -1027,11 +1023,30 @@
       if (!e.target.closest('.pdf-item')) closeBatchContextMenu();
     });
 
+    // ─── Modal open/close helpers ─────────────────────────────────────────
+    // Every modal in this page is a `.modal-overlay` toggled via `.active`, with
+    // `body.modal-open` locking background scroll for as long as any one of them
+    // is open. Centralizing that pair here is what let closeApiKeyGuideModal's
+    // "don't unlock scroll if another modal is still open underneath" rule become
+    // just "check for any other active modal" instead of hardcoding one specific
+    // modal id to watch for.
+    function openModal(id) {
+      const m = document.getElementById(id);
+      if (m) m.classList.add('active');
+      document.body.classList.add('modal-open');
+    }
+
+    function closeModal(id) {
+      const m = document.getElementById(id);
+      if (m) m.classList.remove('active');
+      if (!document.querySelector('.modal-overlay.active')) {
+        document.body.classList.remove('modal-open');
+      }
+    }
+
     function closeNamingModal() {
       flushRenameAutoSave(); // fire-and-forget — don't make closing wait on the network
-      const m = document.getElementById('naming-modal');
-      if(m) m.classList.remove('active');
-      document.body.classList.remove('modal-open');
+      closeModal('naming-modal');
     }
 
     // ─── Gemini API key (BYOK) ───────────────────────────────────────────
@@ -1058,15 +1073,11 @@
       const input = document.getElementById('api-key-input');
       if (input) input.value = getGeminiApiKey();
       updateApiKeyHint();
-      const m = document.getElementById('api-key-modal');
-      if (m) m.classList.add('active');
-      document.body.classList.add('modal-open');
+      openModal('api-key-modal');
     }
 
     function closeApiKeyModal() {
-      const m = document.getElementById('api-key-modal');
-      if (m) m.classList.remove('active');
-      document.body.classList.remove('modal-open');
+      closeModal('api-key-modal');
     }
 
     function saveApiKey() {
@@ -1090,19 +1101,14 @@
     }
 
     function openApiKeyGuideModal() {
-      const m = document.getElementById('api-key-guide-modal');
-      if (m) m.classList.add('active');
-      document.body.classList.add('modal-open');
+      openModal('api-key-guide-modal');
     }
 
     function closeApiKeyGuideModal() {
-      const m = document.getElementById('api-key-guide-modal');
-      if (m) m.classList.remove('active');
-      // The API key modal underneath is still open — only drop modal-open once
-      // no modal is left active, otherwise scroll-locking is undone too early.
-      if (!document.getElementById('api-key-modal')?.classList.contains('active')) {
-        document.body.classList.remove('modal-open');
-      }
+      // The API key modal underneath is still open — closeModal only drops
+      // modal-open once no .modal-overlay is left active, so scroll-locking
+      // isn't undone too early.
+      closeModal('api-key-guide-modal');
     }
 
     // ─── Rename modal auto-save ──────────────────────────────────────────
@@ -1259,11 +1265,7 @@
 
     function openRenameModal(fileId, currentName, pageCount = 1) {
       loadRenameModalContent(fileId, currentName, pageCount);
-
-      const m = document.getElementById('naming-modal');
-      if (m) m.classList.add('active');
-      document.body.classList.add('modal-open');
-
+      openModal('naming-modal');
       document.getElementById('custom-filename').focus();
     }
 
@@ -1515,8 +1517,7 @@
 
       const res = await postAction('/extract', {
         pages: extractionList,
-        custom_name: currentCustomName,
-        file_counter: fileCounter
+        custom_name: currentCustomName
       });
 
       if (res) {
@@ -1567,7 +1568,6 @@
     async function showPreview(card) {
       const canvas = card.querySelector('.page-img');
       const modalImg = document.getElementById('preview-img');
-      const modal = document.getElementById('preview-modal');
       // The thumbnail canvas renders lazily (IntersectionObserver) — if the
       // user clicks right as a card scrolls into view, the render may still
       // be in flight. renderPageCanvas no-ops once already rendered, so this
@@ -1575,14 +1575,11 @@
       await renderPageCanvas(canvas);
       modalImg.src = canvas.toDataURL('image/png');
       modalImg.style.transform = canvas.style.transform;
-      modal.classList.add('active');
-      document.body.classList.add('modal-open');
+      openModal('preview-modal');
     }
 
     function closePreview() {
-      const p = document.getElementById('preview-modal');
-      if(p) p.classList.remove('active');
-      document.body.classList.remove('modal-open');
+      closeModal('preview-modal');
     }
 
     function appendToOutputList(html) {
@@ -1614,15 +1611,11 @@
     let pendingDownloadFileIds = null;
     function openDownloadConfirmModal(fileIds) {
       pendingDownloadFileIds = (fileIds && fileIds.length > 0) ? fileIds : null;
-      const m = document.getElementById('download-confirm-modal');
-      if (m) m.classList.add('active');
-      document.body.classList.add('modal-open');
+      openModal('download-confirm-modal');
     }
 
     function closeDownloadConfirmModal() {
-      const m = document.getElementById('download-confirm-modal');
-      if (m) m.classList.remove('active');
-      document.body.classList.remove('modal-open');
+      closeModal('download-confirm-modal');
     }
 
     // ─── "Adlandır" menu: Gemini API vs Manuel ───────────────────────────
@@ -1792,7 +1785,7 @@
         }
         const blob = await res.blob();
         const filename = li?.querySelector('p.truncate')?.textContent?.trim() || `${fileId}.pdf`;
-        triggerBlobDownload(blob, `${String(index).padStart(2, '0')}_${filename}`);
+        triggerBlobDownload(blob, ekPrefixedFilename(index, filename));
         if (typeof logEvent === 'function') logEvent('download_single', {});
         await cleanupDeliveredFiles([fileId]);
       } catch (e) {
