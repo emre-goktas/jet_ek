@@ -8,7 +8,7 @@ import pymupdf
 from google import genai
 
 from backend.services import db_service
-from backend.services.pdf_service import get_pdf_info, rename_output
+from backend.services.pdf_service import get_pdf_info, rename_output, user_storage_dir
 
 def get_client(api_key: str):
     """BYOK: each request brings its own Gemini key (header-passthrough from the
@@ -102,9 +102,10 @@ def jet_rename_pdf(file_id: str, api_key: str, user_email: str) -> str:
     t0 = time.monotonic()
     try:
         client = get_client(api_key)
+        user_dir = user_storage_dir(user_email)
 
         # 1. Get the target PDF path
-        path, original_filename, _ = get_pdf_info(file_id)
+        path, original_filename, _ = get_pdf_info(file_id, user_dir)
 
         # 2. Extract only the first page into a temporary PDF to save tokens/time
         temp_pdf_path, is_landscape = _extract_first_page(path)
@@ -123,7 +124,7 @@ def jet_rename_pdf(file_id: str, api_key: str, user_email: str) -> str:
         new_name = _clean_ai_name(response.text.strip())
 
         # 5. Rename the physical file and metadata
-        new_path, new_filename, metadata = rename_output(file_id, new_name)
+        new_path, new_filename, metadata = rename_output(file_id, new_name, user_dir)
         label = metadata.get("label", "PDF")
 
         # Get page count
@@ -167,6 +168,7 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str, user_email: str) -> 
     temp_files = []
     batch_size = len(file_ids)
     t0 = time.monotonic()
+    user_dir = user_storage_dir(user_email)
 
     try:
         try:
@@ -177,7 +179,7 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str, user_email: str) -> 
             raise
 
         def _prepare_one(file_id: str):
-            path, original_filename, _ = get_pdf_info(file_id)
+            path, original_filename, _ = get_pdf_info(file_id, user_dir)
             temp_pdf_path, is_landscape = _extract_first_page(path)
             temp_files.append(temp_pdf_path)
 
@@ -238,7 +240,7 @@ def jet_rename_pdf_batch(file_ids: list[str], api_key: str, user_email: str) -> 
 
             try:
                 new_name = _clean_ai_name(new_name)
-                new_path, new_filename, metadata = rename_output(file_id, new_name)
+                new_path, new_filename, metadata = rename_output(file_id, new_name, user_dir)
                 label = metadata.get("label", "PDF")
 
                 doc = pymupdf.open(str(new_path))

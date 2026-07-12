@@ -22,8 +22,6 @@ router = APIRouter()
 
 @router.get("/login")
 async def login_page(request: Request):
-    if not auth_service.is_auth_enabled():
-        raise HTTPException(status_code=404, detail="Login is not configured.")
     if auth_service.get_current_user_optional(request) is not None:
         return RedirectResponse(url="/")
     return templates.TemplateResponse(
@@ -39,9 +37,6 @@ class GoogleAuthRequest(BaseModel):
 
 @router.post("/auth/google")
 async def auth_google(req: GoogleAuthRequest, response: Response):
-    if not auth_service.is_auth_enabled():
-        raise HTTPException(status_code=404, detail="Login is not configured.")
-
     try:
         claims = await auth_service.verify_google_id_token(req.credential)
     except Exception:
@@ -60,7 +55,7 @@ async def auth_google(req: GoogleAuthRequest, response: Response):
         max_age=auth_service.SESSION_MAX_AGE_SECONDS,
         httponly=True,
         secure=auth_service.COOKIE_SECURE,
-        samesite="lax",
+        samesite="strict",
     )
     # Faz 3 will redirect first-time users to /onboarding instead once a
     # SQLite profile table exists to check against.

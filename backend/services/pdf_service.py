@@ -10,7 +10,9 @@ import re
 import uuid
 import io
 import json
+import time
 import asyncio
+import hashlib
 import tempfile
 import threading
 from pathlib import Path
@@ -58,16 +60,35 @@ def is_valid_uuid(val: str) -> bool:
     """Checks if the entered value is a 32-character hex (UUID)."""
     return bool(val and _HEX32_RE.fullmatch(val))
 
+
+def user_storage_dir(email: str) -> Path:
+    """Per-user storage root: storage/user_{sha256(email)}/. Hashed rather than
+    the raw address so directory listings/backups never expose a PII string,
+    and so odd email characters never have to be filesystem-escaped. Every
+    file/path lookup in this module is scoped to one such directory — a
+    request for another user's file_id simply never matches anything here,
+    which is what makes this both the storage layout AND the ownership check."""
+    digest = hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()
+    d = STORAGE_DIR / f"user_{digest}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
 _PATH_CACHE: dict[str, Path] = {}
 
-def _resolve_path(id_: str) -> Path:
-    """Resolves the on-disk path for a given id (source or output PDF), using an
-    in-memory cache to avoid re-scanning STORAGE_DIR on every lookup."""
+def _resolve_path(id_: str, user_dir: Path) -> Path:
+    """Resolves the on-disk path for a given id (source or output PDF) within
+    user_dir, using an in-memory cache to avoid re-scanning on every lookup.
+    The cached entry is only trusted if it actually lives in user_dir — this
+    is what stops the cache from becoming a cross-user shortcut around the
+    directory scoping (a bare "cached.exists()" check would let a valid path
+    resolved for one user get handed straight back to a different user who
+    supplies the same file_id, before the glob below ever gets a chance to
+    correctly find nothing)."""
     cached = _PATH_CACHE.get(id_)
-    if cached is not None and cached.exists():
+    if cached is not None and cached.parent == user_dir and cached.exists():
         return cached
 
-    matches = list(STORAGE_DIR.glob(f"{id_}_*.pdf"))
+    matches = list(user_dir.glob(f"{id_}_*.pdf"))
     if not matches:
         raise FileNotFoundError(id_)
     path = matches[0]
@@ -75,9 +96,9 @@ def _resolve_path(id_: str) -> Path:
     return path
 
 
-def get_metadata(file_id: str) -> dict:
+def get_metadata(file_id: str, user_dir: Path) -> dict:
     """Returns the metadata dict for the given file_id. Returns empty dict if not found."""
-    json_path = STORAGE_DIR / f"{file_id}.json"
+    json_path = user_dir / f"{file_id}.json"
     if json_path.exists():
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
@@ -86,13 +107,13 @@ def get_metadata(file_id: str) -> dict:
             pass
     return {}
 
-def save_metadata(file_id: str, metadata: dict):
+def save_metadata(file_id: str, metadata: dict, user_dir: Path):
     """Saves the metadata dict for the given file_id."""
-    json_path = STORAGE_DIR / f"{file_id}.json"
+    json_path = user_dir / f"{file_id}.json"
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(metadata, f, ensure_ascii=False)
 
-def save_upload(file_path: Path, original_name: str) -> tuple[str, int]:
+def save_upload(file_path: Path, original_name: str, user_dir: Path) -> tuple[str, int]:
     """Saves the uploaded PDF file to storage with a unique pdf_id.
 
     Returns:
@@ -100,9 +121,8 @@ def save_upload(file_path: Path, original_name: str) -> tuple[str, int]:
     """
     import shutil
     pdf_id = uuid.uuid4().hex
-    dest = STORAGE_DIR / f"{pdf_id}_src.pdf"
+    dest = user_dir / f"{pdf_id}_src.pdf"
 
-    STORAGE_DIR.mkdir(exist_ok=True)
     shutil.move(str(file_path), str(dest))
     _PATH_CACHE[pdf_id] = dest
 
@@ -115,24 +135,28 @@ def save_upload(file_path: Path, original_name: str) -> tuple[str, int]:
     return pdf_id, page_count
 
 
-def _src_path(pdf_id: str) -> Path:
+def _src_path(pdf_id: str, user_dir: Path) -> Path:
     """Returns the path of the source PDF file."""
     if not is_valid_uuid(pdf_id):
         raise ValueError(f"Invalid PDF ID: {pdf_id}")
 
     try:
-        return _resolve_path(pdf_id)
+        return _resolve_path(pdf_id, user_dir)
     except FileNotFoundError:
         raise FileNotFoundError(f"PDF not found: {pdf_id}")
 
 
-def _build_pdf_from_pages(pages: list[dict]) -> "pymupdf.Document":
+def _build_pdf_from_pages(pages: list[dict], user_dir: Path) -> "pymupdf.Document":
     """Assembles a new in-memory document from an ordered page list, each dict
-    shaped {"pdf_id": "id", "page_idx": 0, "rotation": 90}. Opens each unique
-    source pdf_id once (locked for the duration via lock_file), applies the
-    requested rotation delta on top of whatever rotation the source page already
-    carries, and skips out-of-range page_idx values with a warning instead of
-    raising. Caller validates the pages list (non-empty / size ceiling) and is
+    shaped {"pdf_id": "id", "page_idx": 0, "rotation": 90}. Every pdf_id is
+    resolved within user_dir (see _src_path/_resolve_path) — a page list that
+    names a file_id belonging to a different user simply fails to resolve,
+    which is what stops /extract and /update from being usable to pull pages
+    out of someone else's document. Opens each unique source pdf_id once
+    (locked for the duration via lock_file), applies the requested rotation
+    delta on top of whatever rotation the source page already carries, and
+    skips out-of-range page_idx values with a warning instead of raising.
+    Caller validates the pages list (non-empty / size ceiling) and is
     responsible for closing the returned document.
     """
     new_doc = pymupdf.open()
@@ -147,7 +171,7 @@ def _build_pdf_from_pages(pages: list[dict]) -> "pymupdf.Document":
             rot = p.get("rotation", 0)
 
             if pid not in open_docs:
-                src_path = _src_path(pid)
+                src_path = _src_path(pid, user_dir)
                 stack.enter_context(lock_file(src_path))
                 src_doc = stack.enter_context(pymupdf.open(str(src_path)))
                 open_docs[pid] = src_doc
@@ -164,12 +188,14 @@ def _build_pdf_from_pages(pages: list[dict]) -> "pymupdf.Document":
     return new_doc
 
 
-def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[str, str, int]:
+def extract_pages(pages: list[dict], user_dir: Path, custom_name: str | None = None) -> tuple[str, str, int]:
     """Extracts the specified list of pages from potentially multiple PDFs
     and rotates them according to the specified angles.
 
     Args:
         pages: List of dicts e.g. [{"pdf_id": "id", "page_idx": 0, "rotation": 90}]
+        user_dir: the calling user's storage directory (see user_storage_dir) —
+            every pdf_id in pages must resolve within it.
         custom_name: Optional custom filename prefix.
 
     Returns:
@@ -181,19 +207,19 @@ def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[st
     if len(pages) > 5000:
         raise ValueError("To protect system performance, a maximum of 5000 pages can be extracted at once.")
 
-    new_doc = _build_pdf_from_pages(pages)
+    new_doc = _build_pdf_from_pages(pages, user_dir)
 
     actual_count = len(new_doc)
     file_id = uuid.uuid4().hex
 
     if custom_name:
-        save_metadata(file_id, {"custom_name": custom_name})
+        save_metadata(file_id, {"custom_name": custom_name}, user_dir)
         clean_name = security.sanitize_filename(custom_name)
         filename = f"{clean_name}.pdf"
     else:
         filename = "evrak.pdf"
 
-    out_path = STORAGE_DIR / f"{file_id}_{filename}"
+    out_path = user_dir / f"{file_id}_{filename}"
     new_doc.save(str(out_path))
     new_doc.close()
     _PATH_CACHE[file_id] = out_path
@@ -201,7 +227,7 @@ def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[st
     return file_id, filename, actual_count
 
 
-def update_pages(file_id: str, pages: list[dict]) -> int:
+def update_pages(file_id: str, pages: list[dict], user_dir: Path) -> int:
     """Rebuilds file_id's PDF content IN PLACE from the given ordered page list
     (reorder/rotate persisted from Batch Mode), keeping the same file_id.
 
@@ -214,6 +240,8 @@ def update_pages(file_id: str, pages: list[dict]) -> int:
         file_id: existing output's id
         pages: List of dicts e.g. [{"pdf_id": "id", "page_idx": 0, "rotation": 90}],
                in the final desired order.
+        user_dir: the calling user's storage directory — file_id and every
+            pdf_id in pages must resolve within it.
 
     Returns:
         actual_page_count after the rebuild.
@@ -224,15 +252,15 @@ def update_pages(file_id: str, pages: list[dict]) -> int:
     if len(pages) > 5000:
         raise ValueError("To protect system performance, a maximum of 5000 pages can be updated at once.")
 
-    dest_path = get_output_path(file_id)
+    dest_path = get_output_path(file_id, user_dir)
 
     with lock_file(dest_path):
-        new_doc = _build_pdf_from_pages(pages)
+        new_doc = _build_pdf_from_pages(pages, user_dir)
         actual_count = len(new_doc)
 
         tmp_name = None
         try:
-            fd, tmp_name = tempfile.mkstemp(dir=STORAGE_DIR, suffix=".pdf")
+            fd, tmp_name = tempfile.mkstemp(dir=user_dir, suffix=".pdf")
             os.close(fd)
             try:
                 new_doc.save(tmp_name)
@@ -248,26 +276,26 @@ def update_pages(file_id: str, pages: list[dict]) -> int:
     return actual_count
 
 
-def get_output_path(file_id: str) -> Path:
+def get_output_path(file_id: str, user_dir: Path) -> Path:
     """Returns the output PDF file path according to file_id."""
     if not is_valid_uuid(file_id):
         raise ValueError(f"Invalid File ID: {file_id}")
 
     try:
-        return _resolve_path(file_id)
+        return _resolve_path(file_id, user_dir)
     except FileNotFoundError:
         raise FileNotFoundError(f"Output file not found: {file_id}")
 
-def get_pdf_info(file_id: str):
+def get_pdf_info(file_id: str, user_dir: Path):
     """Returns (path, filename, page_count) for a given file_id."""
     if not is_valid_uuid(file_id):
         raise ValueError(f"Invalid File ID: {file_id}")
 
     # Check if original upload
-    orig_path = STORAGE_DIR / f"{file_id}_src.pdf"
+    orig_path = user_dir / f"{file_id}_src.pdf"
     if orig_path.exists():
         _PATH_CACHE[file_id] = orig_path
-        metadata = get_metadata(file_id)
+        metadata = get_metadata(file_id, user_dir)
         filename = metadata.get("original_filename", f"{file_id}.pdf")
         doc = pymupdf.open(str(orig_path))
         count = len(doc)
@@ -276,7 +304,7 @@ def get_pdf_info(file_id: str):
 
     # Check if extracted batch
     try:
-        path = _resolve_path(file_id)
+        path = _resolve_path(file_id, user_dir)
     except FileNotFoundError:
         raise FileNotFoundError(f"PDF not found for id: {file_id}")
 
@@ -287,17 +315,17 @@ def get_pdf_info(file_id: str):
     return path, filename, count
 
 
-def rename_output(file_id: str, new_display_name: str) -> tuple[Path, str, dict]:
+def rename_output(file_id: str, new_display_name: str, user_dir: Path) -> tuple[Path, str, dict]:
     """Renames the output file for file_id to a sanitized version of new_display_name,
     persists the display name in metadata, and updates the path cache.
 
     Returns:
         (new_path, new_filename, metadata)
     """
-    path = get_output_path(file_id)
-    metadata = get_metadata(file_id)
+    path = get_output_path(file_id, user_dir)
+    metadata = get_metadata(file_id, user_dir)
     metadata["custom_name"] = new_display_name
-    save_metadata(file_id, metadata)
+    save_metadata(file_id, metadata, user_dir)
 
     clean_name = security.sanitize_filename(new_display_name)
     new_filename = f"{clean_name}.pdf"
@@ -313,16 +341,18 @@ def rename_output(file_id: str, new_display_name: str) -> tuple[Path, str, dict]
     return new_path, new_filename, metadata
 
 
-def delete_output(file_id: str) -> None:
+def delete_output(file_id: str, user_dir: Path) -> None:
     """Best-effort full removal of an output once its content has been
     delivered to the client (e.g. a ZIP built client-side, or a completed
     single-file download): shreds the PDF bytes, its metadata sidecar, and
     drops the cached path. Silently no-ops for a missing/invalid/locked
-    file_id — this is opportunistic cleanup, not a source of truth the
-    caller needs to retry on failure.
+    file_id, and for any file_id that doesn't resolve within user_dir (i.e.
+    belongs to someone else) — this is opportunistic cleanup, not a source of
+    truth the caller needs to retry on failure, and it must never let one
+    user delete another's file just by naming its id.
     """
     try:
-        path = get_output_path(file_id)
+        path = get_output_path(file_id, user_dir)
     except (FileNotFoundError, ValueError):
         return
 
@@ -331,11 +361,38 @@ def delete_output(file_id: str) -> None:
 
     secure_delete(path)
 
-    json_path = STORAGE_DIR / f"{file_id}.json"
+    json_path = user_dir / f"{file_id}.json"
     if json_path.exists():
         secure_delete(json_path)
 
     _PATH_CACHE.pop(file_id, None)
+
+
+def mark_delivered(file_id: str, user_dir: Path) -> None:
+    """Called once a download has actually been triggered client-side (the
+    browser was handed the bytes to save) — rather than deleting the file
+    right then, this just resets its mtime to now, so the ordinary 15-minute
+    sweep (_sweep_storage in main.py) is what actually removes it, on its own
+    schedule. The gap is deliberate: a client only ever gets to say "I told
+    the browser to save this," never "the browser definitely finished saving
+    it" (there's no such completion event for a download triggered this way),
+    so treating that signal as a countdown-start instead of an instant-delete
+    trigger leaves a real margin for a slow connection or a stalled tab to
+    still recover by re-fetching before the file is actually gone. Silently
+    no-ops for a missing/invalid/other-user's file_id — same best-effort,
+    non-authoritative semantics as delete_output.
+    """
+    try:
+        path = get_output_path(file_id, user_dir)
+    except (FileNotFoundError, ValueError):
+        return
+
+    now = time.time()
+    os.utime(path, (now, now))
+
+    json_path = user_dir / f"{file_id}.json"
+    if json_path.exists():
+        os.utime(json_path, (now, now))
 
 
 def secure_delete(path: Path) -> None:

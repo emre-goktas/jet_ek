@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 import logging
@@ -14,17 +14,9 @@ logger = logging.getLogger(__name__)
 MISSING_KEY_DETAIL = "Lütfen Gemini API anahtarınızı ayarlayın."
 
 
-def _current_user_email(request: Request) -> str:
-    """Falls back to "anonymous" rather than raising: this router is already
-    gated behind auth when it's enabled, so a missing user here only happens
-    in the auth-disabled dev/deploy mode — logging shouldn't be the thing
-    that breaks renaming in that mode."""
-    user = auth_service.get_current_user_optional(request)
-    return user["email"] if user else "anonymous"
-
 @router.post("/jet-rename/{file_id}", response_class=HTMLResponse)
 @limiter.limit("10/minute")
-def jet_rename(file_id: str, request: Request, x_gemini_api_key: str | None = Header(default=None)):
+def jet_rename(file_id: str, request: Request, x_gemini_api_key: str | None = Header(default=None), current_user: dict = Depends(auth_service.get_current_user)):
     """
     Renames the given PDF file_id using Gemini AI based on its first page.
     Returns the updated HTML for the left panel item.
@@ -32,7 +24,7 @@ def jet_rename(file_id: str, request: Request, x_gemini_api_key: str | None = He
     if not x_gemini_api_key:
         raise HTTPException(status_code=400, detail=MISSING_KEY_DETAIL)
     try:
-        new_filename, label, page_count, custom_name = jet_rename_pdf(file_id, x_gemini_api_key, _current_user_email(request))
+        new_filename, label, page_count, custom_name = jet_rename_pdf(file_id, x_gemini_api_key, current_user["email"])
         context = {
             "request": request,
             "file_id": file_id,
@@ -52,7 +44,7 @@ class BatchRenameRequest(BaseModel):
 
 @router.post("/jet-rename-batch", response_class=JSONResponse)
 @limiter.limit("5/minute")
-def jet_rename_batch(data: BatchRenameRequest, request: Request, x_gemini_api_key: str | None = Header(default=None)):
+def jet_rename_batch(data: BatchRenameRequest, request: Request, x_gemini_api_key: str | None = Header(default=None), current_user: dict = Depends(auth_service.get_current_user)):
     """
     Renames multiple PDF files using Gemini AI in a single batch.
     Returns a JSON mapping of file_id -> rendered HTML snippet.
@@ -60,7 +52,7 @@ def jet_rename_batch(data: BatchRenameRequest, request: Request, x_gemini_api_ke
     if not x_gemini_api_key:
         raise HTTPException(status_code=400, detail=MISSING_KEY_DETAIL)
     try:
-        results = jet_rename_pdf_batch(data.file_ids, x_gemini_api_key, _current_user_email(request))
+        results = jet_rename_pdf_batch(data.file_ids, x_gemini_api_key, current_user["email"])
         response_htmls = {}
         for file_id, info in results.items():
             context = {

@@ -7,12 +7,13 @@ import logging
 # pyrefly: ignore [missing-import]
 import pymupdf
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 # pyrefly: ignore [missing-import]
 from pydantic import BaseModel
 
-from backend.services import pdf_service
+from backend.services import pdf_service, auth_service
 from backend.templating import templates
+from backend.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +33,16 @@ class ExtractRequest(BaseModel):
 
 
 @router.post("/extract")
-def extract_pages(req: ExtractRequest, request: Request):
+@limiter.limit("30/minute")
+def extract_pages(req: ExtractRequest, request: Request, current_user: dict = Depends(auth_service.get_current_user)):
     """Extracts selected pages, returns the left panel HTML fragment."""
     if not req.pages:
         raise HTTPException(status_code=400, detail="No pages selected.")
 
+    user_dir = pdf_service.user_storage_dir(current_user["email"])
     try:
         pages_dicts = [p.model_dump() for p in req.pages]
-        file_id, filename, actual_count = pdf_service.extract_pages(pages_dicts, custom_name=req.custom_name)
+        file_id, filename, actual_count = pdf_service.extract_pages(pages_dicts, user_dir, custom_name=req.custom_name)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Source PDF not found.")
     except Exception as e:
@@ -65,10 +68,12 @@ class RenameRequest(BaseModel):
     custom_name: str
 
 @router.post("/rename/{file_id}")
-def rename_pdf(file_id: str, req: RenameRequest, request: Request):
+@limiter.limit("30/minute")
+def rename_pdf(file_id: str, req: RenameRequest, request: Request, current_user: dict = Depends(auth_service.get_current_user)):
     """Renames an extracted PDF metadata and returns the updated HTML fragment."""
+    user_dir = pdf_service.user_storage_dir(current_user["email"])
     try:
-        new_path, new_filename, metadata = pdf_service.rename_output(file_id, req.custom_name)
+        new_path, new_filename, metadata = pdf_service.rename_output(file_id, req.custom_name, user_dir)
         label = metadata.get("label", "PDF")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found.")
@@ -97,15 +102,17 @@ class UpdateRequest(BaseModel):
     pages: list[PageExtract]
 
 @router.post("/update/{file_id}")
-def update_pdf(file_id: str, req: UpdateRequest, request: Request):
+@limiter.limit("30/minute")
+def update_pdf(file_id: str, req: UpdateRequest, request: Request, current_user: dict = Depends(auth_service.get_current_user)):
     """Persists Batch Mode grid edits (rotate/reorder) to file_id in place."""
     if not req.pages:
         raise HTTPException(status_code=400, detail="No pages to update.")
 
+    user_dir = pdf_service.user_storage_dir(current_user["email"])
     try:
         pages_dicts = [p.model_dump() for p in req.pages]
-        pdf_service.update_pages(file_id, pages_dicts)
-        _, filename, page_count = pdf_service.get_pdf_info(file_id)
+        pdf_service.update_pages(file_id, pages_dicts, user_dir)
+        _, filename, page_count = pdf_service.get_pdf_info(file_id, user_dir)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found.")
     except ValueError as e:
@@ -115,7 +122,7 @@ def update_pdf(file_id: str, req: UpdateRequest, request: Request):
         raise HTTPException(status_code=500, detail="Update failed.")
 
     label = f"{page_count} Pages" if page_count > 1 else "Page 1"
-    custom_name = pdf_service.get_metadata(file_id).get("custom_name", "")
+    custom_name = pdf_service.get_metadata(file_id, user_dir).get("custom_name", "")
 
     return templates.TemplateResponse(
         request=request,

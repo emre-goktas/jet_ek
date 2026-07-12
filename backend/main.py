@@ -11,6 +11,7 @@ import asyncio
 import itertools
 import time
 import logging
+from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
 load_dotenv()  # explicit here (not just relying on ai_service's import-time side effect)
@@ -28,17 +29,45 @@ from backend.rate_limit import limiter
 BASE_DIR = Path(__file__).parent.parent
 STATIC_DIR = BASE_DIR / "frontend" / "static"
 
+# Auth is mandatory — refuse to start rather than silently running with every
+# route open. Checked at import time, before the app or any router is built.
+_missing_env = auth_service.missing_env_vars()
+if _missing_env:
+    raise RuntimeError(
+        "JETEK cannot start: missing required environment variable(s) "
+        f"{', '.join(_missing_env)}. Set GOOGLE_CLIENT_ID and SESSION_SECRET_KEY "
+        "in .env — authentication is mandatory. See .env.example."
+    )
+
+LOG_DIR = BASE_DIR / "backend" / "data"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        RotatingFileHandler(LOG_DIR / "app.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"),
+    ],
+    force=True,  # wins even if uvicorn or another import already touched the root logger
+)
+
 logger = logging.getLogger(__name__)
 
 
 def _sweep_storage(max_age_seconds: float | None):
-    """Deletes unlocked files from STORAGE_DIR. With max_age_seconds set, only
-    files older than that are touched (the hourly safety net); with None,
-    everything unlocked is wiped regardless of age (the nightly full sweep —
-    most output files should already be gone via /cleanup by then, this is
-    the backstop for abandoned/incomplete sessions)."""
+    """Deletes unlocked files from STORAGE_DIR. Covers both layouts: legacy
+    flat-root files (pre-per-user-storage leftovers, glob at the root) and
+    the current per-user user_*/ subdirectories. With max_age_seconds set,
+    only files older than that are touched (the 15-minute safety net); with
+    None, everything unlocked is wiped regardless of age (the nightly full
+    sweep — most output files should already be gone via /cleanup by then,
+    this is the backstop for abandoned/incomplete sessions)."""
     now = time.time()
-    for p in itertools.chain(STORAGE_DIR.glob("*.pdf"), STORAGE_DIR.glob("*.json")):
+    patterns = itertools.chain(
+        STORAGE_DIR.glob("*.pdf"), STORAGE_DIR.glob("*.json"),
+        STORAGE_DIR.glob("user_*/*.pdf"), STORAGE_DIR.glob("user_*/*.json"),
+    )
+    for p in patterns:
         try:
             if max_age_seconds is None or now - p.stat().st_mtime > max_age_seconds:
                 if not is_file_locked(p):
@@ -48,13 +77,13 @@ def _sweep_storage(max_age_seconds: float | None):
 
 
 async def cleanup_old_files():
-    """Safety net: every hour, deletes unlocked files older than 1 hour."""
+    """Safety net: every 15 minutes, deletes unlocked files older than 15 minutes."""
     while True:
         try:
-            _sweep_storage(max_age_seconds=3600)
+            _sweep_storage(max_age_seconds=900)
         except Exception as e:
-            logging.error(f"Hourly cleanup loop error: {e}")
-        await asyncio.sleep(3600)
+            logging.error(f"Cleanup sweep loop error: {e}")
+        await asyncio.sleep(900)
 
 
 async def nightly_full_cleanup():
@@ -107,17 +136,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # Static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# Every route that touches a user's document requires a session once auth is
-# configured (GOOGLE_CLIENT_ID + SESSION_SECRET_KEY in .env) — see auth_service.
-# Until then this list is empty and behavior is unchanged from before auth existed.
-if auth_service.is_auth_enabled():
-    _auth_dependency = [Depends(auth_service.get_current_user)]
-else:
-    logger.warning(
-        "GOOGLE_CLIENT_ID / SESSION_SECRET_KEY not set — authentication is DISABLED, "
-        "all routes are open. Set both in .env to require Google Sign-In."
-    )
-    _auth_dependency = []
+# Every route that touches a user's document requires a session — auth is
+# mandatory (see the startup check above), so this is never empty.
+_auth_dependency = [Depends(auth_service.get_current_user)]
 
 # Register routers
 app.include_router(auth.router)
@@ -133,14 +154,12 @@ app.include_router(ai.router, prefix="/ai", dependencies=_auth_dependency)
 
 @app.get("/")
 async def index(request: Request):
-    """Home page — redirects to /login if auth is enabled and there's no valid
-    session, or to /onboarding if logged in but the profile (name/title/
-    template choice) hasn't been filled in yet."""
-    user = None
-    if auth_service.is_auth_enabled():
-        user = auth_service.get_current_user_optional(request)
-        if user is None:
-            return RedirectResponse(url="/login")
-        if db_service.get_profile(user["email"]) is None:
-            return RedirectResponse(url="/onboarding")
+    """Home page — redirects to /login if there's no valid session, or to
+    /onboarding if logged in but the profile (name/title/template choice)
+    hasn't been filled in yet."""
+    user = auth_service.get_current_user_optional(request)
+    if user is None:
+        return RedirectResponse(url="/login")
+    if db_service.get_profile(user["email"]) is None:
+        return RedirectResponse(url="/onboarding")
     return templates.TemplateResponse(request=request, name="index.html", context={"request": request, "user": user})

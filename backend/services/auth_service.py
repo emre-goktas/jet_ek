@@ -1,11 +1,9 @@
 """
 Google Sign-In (passwordless) verification + signed session cookies.
 
-Auth is entirely optional/toggleable via environment variables: if
-GOOGLE_CLIENT_ID or SESSION_SECRET_KEY isn't set, is_auth_enabled() is False
-and main.py leaves every route open, exactly like before this feature
-existed — so an already-running deployment isn't locked out the moment this
-code ships, only once its operator deliberately configures Google OAuth.
+Auth is mandatory: main.py refuses to start unless both GOOGLE_CLIENT_ID and
+SESSION_SECRET_KEY are set (see missing_env_vars()), so every route in this
+app is always behind a required session.
 """
 import os
 import asyncio
@@ -28,8 +26,18 @@ SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600  # 30 days
 COOKIE_SECURE = os.environ.get("JETEK_ENV", "").strip().lower() != "development"
 
 
+REQUIRED_ENV_VARS = ("GOOGLE_CLIENT_ID", "SESSION_SECRET_KEY")
+
+
+def missing_env_vars() -> list[str]:
+    """Names of required auth env vars that are unset/empty — main.py fails
+    fast at startup if this is non-empty, rather than running with auth
+    silently disabled."""
+    return [name for name in REQUIRED_ENV_VARS if not os.environ.get(name)]
+
+
 def is_auth_enabled() -> bool:
-    return bool(os.environ.get("GOOGLE_CLIENT_ID")) and bool(os.environ.get("SESSION_SECRET_KEY"))
+    return not missing_env_vars()
 
 
 @lru_cache(maxsize=1)

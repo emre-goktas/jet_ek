@@ -1,5 +1,5 @@
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, File, UploadFile, HTTPException, Request
+from fastapi import APIRouter, File, UploadFile, HTTPException, Request, Depends
 # pyrefly: ignore [missing-import]
 from fastapi.responses import HTMLResponse
 from pathlib import Path
@@ -8,8 +8,9 @@ import os
 import tempfile
 import logging
 
-from backend.services import pdf_service
+from backend.services import pdf_service, auth_service
 from backend.templating import templates
+from backend.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,8 @@ router = APIRouter()
 
 
 @router.post("/upload")
-async def upload_pdf(request: Request, file: UploadFile = File(...)):
+@limiter.limit("20/minute")
+async def upload_pdf(request: Request, file: UploadFile = File(...), current_user: dict = Depends(auth_service.get_current_user)):
     """Uploads a PDF or Image file, returns the viewer HTML fragment."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="File could not be uploaded.")
@@ -37,7 +39,8 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         pdf_path, final_filename = preprocess_to_pdf(Path(temp_path), file.filename)
         temp_pdf_path = str(pdf_path)
 
-        pdf_id, page_count = pdf_service.save_upload(pdf_path, final_filename)
+        user_dir = pdf_service.user_storage_dir(current_user["email"])
+        pdf_id, page_count = pdf_service.save_upload(pdf_path, final_filename, user_dir)
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -79,10 +82,12 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
     return response
 
 @router.get("/batch_viewer/{file_id}")
-async def get_batch_viewer(request: Request, file_id: str):
+@limiter.limit("60/minute")
+async def get_batch_viewer(request: Request, file_id: str, current_user: dict = Depends(auth_service.get_current_user)):
     """Returns the viewer HTML fragment for an existing file_id (batch or original)."""
+    user_dir = pdf_service.user_storage_dir(current_user["email"])
     try:
-        _, filename, page_count = pdf_service.get_pdf_info(file_id)
+        _, filename, page_count = pdf_service.get_pdf_info(file_id, user_dir)
     except Exception as e:
         raise HTTPException(status_code=404, detail="File not found.")
 
