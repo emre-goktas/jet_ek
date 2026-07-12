@@ -181,7 +181,6 @@ def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[st
     if len(pages) > 5000:
         raise ValueError("To protect system performance, a maximum of 5000 pages can be extracted at once.")
 
-    has_rotation = any(p.get("rotation", 0) for p in pages)
     new_doc = _build_pdf_from_pages(pages)
 
     actual_count = len(new_doc)
@@ -192,10 +191,7 @@ def extract_pages(pages: list[dict], custom_name: str | None = None) -> tuple[st
         clean_name = security.sanitize_filename(custom_name)
         filename = f"{clean_name}.pdf"
     else:
-        if has_rotation:
-            filename = f"rotated_extracted.pdf"
-        else:
-            filename = f"extracted.pdf"
+        filename = "evrak.pdf"
 
     out_path = STORAGE_DIR / f"{file_id}_{filename}"
     new_doc.save(str(out_path))

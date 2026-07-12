@@ -4,7 +4,10 @@
   Jinja2 variables: file_id, filename, label, custom_name (optional, used by the
   browser to rebuild the Word index list without a server round-trip)
 #}
-<div class="pdf-item">
+<div class="pdf-item" data-file-id="{{ file_id }}" oncontextmenu="openBatchContextMenu(event, this)">
+  <div class="output-select-checkbox-wrap">
+    <input type="checkbox" class="output-select-checkbox" onclick="event.stopPropagation(); toggleOutputSelection(this, '{{ file_id }}')" title="Bu belgeyi seç">
+  </div>
   <div class="flex items-start gap-2">
     <svg class="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round"

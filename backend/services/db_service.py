@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 DB_PATH = Path(__file__).parent.parent / "data" / "jetek.db"
 
-VALID_TEMPLATE_IDS = {"sgk", "saglik_bakanligi", "sgk_denetmen", "duz_tablo"}
+VALID_TEMPLATE_IDS = {"sgk", "saglik_bakanligi", "sgk_denetmen", "duz_tablo", "duz_tablo_excel"}
 
 
 def _init_db():

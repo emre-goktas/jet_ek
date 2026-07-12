@@ -125,8 +125,12 @@ function numberToTurkishWords(n) {
  * renamed file's custom name is used as-is; otherwise a "NN_name.pdf"-shaped
  * filename donates its own number; anything left gets the next free integer.
  */
-function gatherOutputFilesData() {
-  const btns = Array.from(document.querySelectorAll('#output-list .download-btn'));
+function gatherOutputFilesData(fileIdFilter) {
+  let btns = Array.from(document.querySelectorAll('#output-list .download-btn'));
+  if (fileIdFilter && fileIdFilter.length > 0) {
+    const filterSet = new Set(fileIdFilter);
+    btns = btns.filter((btn) => filterSet.has(btn.dataset.fileId));
+  }
 
   const raw = btns.map((btn) => {
     const li = btn.closest('li');
@@ -598,8 +602,135 @@ async function resolveUserTemplateChoice() {
   return { templateId: list[0].id, il: null, isimSoyisim: '', unvan: '' };
 }
 
-/** Fetches the current user's chosen template's full config + source .docx
- * bytes and builds the Word index list. */
+// ─── Minimal from-scratch .xlsx builder (templates with "format": "xlsx") ──
+// No source file to fill in — templates.json just names the same
+// ek_no/mahiyet/sayfa_sayisi column vocabulary the docx "toplam_row" builder
+// uses, and this hand-writes the handful of OOXML parts a spreadsheet needs
+// (no separate library: fflate, already loaded for the PDF zip, is all a
+// package this small requires). Text goes in as inline strings, so there's
+// no xl/sharedStrings.xml part to manage.
+
+function escapeXml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** One <c> cell at column letter `col`, row `rowNum`. Numbers are written as
+ * real numeric cells (so Excel's SUM etc. treat them as numbers); anything
+ * else becomes an inline string. `bold` maps to cellXfs index 1 (see
+ * XLSX_STYLES_XML) — index 0 is the unstyled default. */
+function xlsxCell(col, rowNum, value, bold) {
+  const ref = `${col}${rowNum}`;
+  const s = bold ? ' s="1"' : '';
+  if (typeof value === 'number') {
+    return `<c r="${ref}"${s}><v>${value}</v></c>`;
+  }
+  if (value === '' || value == null) {
+    return `<c r="${ref}"${s}/>`;
+  }
+  return `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`;
+}
+
+function xlsxRow(rowNum, cols, values, bold) {
+  return `<row r="${rowNum}">${cols.map((col, i) => xlsxCell(col, rowNum, values[i], bold)).join('')}</row>`;
+}
+
+const XLSX_CONTENT_TYPES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`;
+
+const XLSX_RELS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+const XLSX_WORKBOOK_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Ek Belgeler Listesi" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+
+const XLSX_WORKBOOK_RELS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+
+// cellXfs index 0 = default, index 1 = bold (used for the title/header/TOPLAM rows).
+const XLSX_STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="2">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  </cellXfs>
+</styleSheet>`;
+
+/** Builds the same three-column (Ek No / Evrakın Mahiyeti / Sayfa Adedi) +
+ * TOPLAM layout as the "duz_tablo" Word template, as a standalone .xlsx. */
+function buildExcelIndex(filesData, template) {
+  const cols = template.data_columns;
+  const letters = ['A', 'B', 'C'];
+  const headers = ['Ek No:', 'Evrakın Mahiyeti', 'Sayfa Adedi'];
+
+  let rowNum = 1;
+  let rows = xlsxRow(rowNum, letters, ['EK BELGELER LİSTESİ', '', ''], true);
+  rowNum++;
+  rows += xlsxRow(rowNum, letters, headers, true);
+  rowNum++;
+
+  let totalPages = 0;
+  for (const f of filesData) {
+    const values = cols.map((colDef) => cellValueFor(colDef, f).text);
+    totalPages += Number(f.page_count) || 0;
+    rows += xlsxRow(rowNum, letters, values, false);
+    rowNum++;
+  }
+
+  const toplamIdx = cols.findIndex((c) => c.type === (template.toplam_cell_column_type || 'sayfa_sayisi'));
+  const toplamValues = ['', 'TOPLAM', ''];
+  if (toplamIdx !== -1) toplamValues[toplamIdx] = totalPages;
+  rows += xlsxRow(rowNum, letters, toplamValues, true);
+
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <cols>
+    <col min="1" max="1" width="10" customWidth="1"/>
+    <col min="2" max="2" width="55" customWidth="1"/>
+    <col min="3" max="3" width="14" customWidth="1"/>
+  </cols>
+  <sheetData>${rows}</sheetData>
+  <mergeCells count="1"><mergeCell ref="A1:C1"/></mergeCells>
+</worksheet>`;
+
+  const zipEntries = {
+    '[Content_Types].xml': fflate.strToU8(XLSX_CONTENT_TYPES_XML),
+    '_rels/.rels': fflate.strToU8(XLSX_RELS_XML),
+    'xl/workbook.xml': fflate.strToU8(XLSX_WORKBOOK_XML),
+    'xl/_rels/workbook.xml.rels': fflate.strToU8(XLSX_WORKBOOK_RELS_XML),
+    'xl/styles.xml': fflate.strToU8(XLSX_STYLES_XML),
+    'xl/worksheets/sheet1.xml': fflate.strToU8(sheetXml),
+  };
+  return fflate.zipSync(zipEntries, { level: 6 });
+}
+
+/** Fetches the current user's chosen template's config and builds the index
+ * document — a from-scratch .xlsx for "format": "xlsx" templates, otherwise
+ * the existing fill-in-the-.docx path. Returns { bytes, extension }. */
 async function buildDocxIndex(filesData) {
   const { templateId, il, isimSoyisim, unvan } = await resolveUserTemplateChoice();
 
@@ -607,10 +738,15 @@ async function buildDocxIndex(filesData) {
   if (!configRes.ok) throw new Error('Failed to load template config.');
   const template = await configRes.json();
 
+  if (template.format === 'xlsx') {
+    return { bytes: buildExcelIndex(filesData, template), extension: 'xlsx' };
+  }
+
   const fileRes = await fetch(`/api/templates/${encodeURIComponent(template.id)}/file`);
   if (!fileRes.ok) throw new Error('Failed to load template file.');
   const templateBytes = await fileRes.arrayBuffer();
-  return buildDocxFromExistingTemplate(templateBytes, filesData, template, { il, isimSoyisim, unvan });
+  const bytes = await buildDocxFromExistingTemplate(templateBytes, filesData, template, { il, isimSoyisim, unvan });
+  return { bytes, extension: 'docx' };
 }
 
 // ─── ZIP assembly + download ────────────────────────────────────────────
@@ -656,8 +792,8 @@ async function cleanupDeliveredFiles(fileIds) {
  * output's PDF bytes from /pdf-source/{id}, optionally stamps EK numbers,
  * builds the Word index, and packages everything into one ZIP client-side.
  */
-async function buildAndDownloadZip(numbered) {
-  const filesData = gatherOutputFilesData();
+async function buildAndDownloadZip(numbered, fileIdFilter) {
+  const filesData = gatherOutputFilesData(fileIdFilter);
   if (filesData.length === 0) return;
 
   if (typeof showStatus === 'function') {
@@ -685,11 +821,11 @@ async function buildAndDownloadZip(numbered) {
     }
 
     try {
-      const docxBytes = await buildDocxIndex(filesData);
-      zipEntries['Ek Belgeler Listesi.docx'] = new Uint8Array(docxBytes);
+      const { bytes, extension } = await buildDocxIndex(filesData);
+      zipEntries[`Ek Belgeler Listesi.${extension}`] = new Uint8Array(bytes);
     } catch (e) {
-      // Matches the backend: a broken Word index shouldn't block the PDF ZIP.
-      console.error('Failed to generate Word index:', e);
+      // Matches the backend: a broken index document shouldn't block the PDF ZIP.
+      console.error('Failed to generate index document:', e);
     }
 
     const zipped = fflate.zipSync(zipEntries, { level: 6 });

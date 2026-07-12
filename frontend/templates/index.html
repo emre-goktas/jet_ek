@@ -115,13 +115,31 @@
           </svg>
           Ek İçeriği
         </button>
-        <!-- AI Rename Button: asks for the Gemini key on first use (see runJetRenameAll), otherwise renames directly -->
-        <button class="flex-1 py-1.5 px-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors flex items-center justify-center gap-1.5" onclick="runJetRenameAll()">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          Adlandır
-        </button>
+        <!-- AI Rename Button: opens a two-option menu — "Gemini API" (see runJetRenameAll,
+             asks for the Gemini key on first use) or "Manuel" (opens the first batch's
+             rename/preview modal directly, no AI or key involved). -->
+        <div class="relative flex-1">
+          <button id="btn-ai-rename" class="w-full py-1.5 px-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors flex items-center justify-center gap-1.5" onclick="toggleAiRenameMenu(event)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Adlandır
+          </button>
+          <div id="ai-rename-menu" class="hidden absolute left-0 top-full mt-1 z-50 w-40 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-1">
+            <button type="button" class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 rounded transition-colors" onclick="closeAiRenameMenu(); runJetRenameAll()">
+              <svg class="w-4 h-4 shrink-0 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Gemini API
+            </button>
+            <button type="button" class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 rounded transition-colors" onclick="closeAiRenameMenu(); openFirstBatchManualRename()">
+              <svg class="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+              </svg>
+              Manuel
+            </button>
+          </div>
+        </div>
       </div>
       <ul id="output-list" class="flex-1 overflow-y-auto p-3 space-y-2" hx-swap-oob="true">
         <li id="output-empty" class="text-xs text-gray-600 italic text-center mt-8">
@@ -184,6 +202,34 @@
           <p class="text-lg">Aşağıdan bir PDF yükleyin</p>
         </div>
       </div>
+
+      <!-- Batch Mode footer strip: a sibling of the toolbar/viewer inside the same
+           section as the sidebar, so it's bottom-anchored at the exact same height
+           as the sidebar's own "İndir" row below (both are shrink-0 children of
+           equal-height flex columns inside <main>) — not a fixed pixel offset. -->
+      <div id="batch-nav-ui" class="hidden flex items-center gap-2 border-t border-gray-800 bg-gray-900 px-3 sm:px-5 py-3 shrink-0">
+        <button onclick="prevBatch()" class="h-10 w-10 shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 transition-colors" title="Önceki Grup (Alt + Sol)">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+        </button>
+
+        <div class="relative flex-1 min-w-0">
+          <input type="text" id="batch-name-input"
+            class="w-full h-10 bg-gray-800 text-gray-200 pl-3 pr-14 rounded-lg text-sm font-medium border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
+            placeholder="Grup Adı"
+            onchange="renameActiveBatch(this.value)" />
+          <span id="batch-nav-status" class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-mono">0/0</span>
+        </div>
+
+        <button id="btn-update-batch"
+          class="action-btn h-10 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shrink-0"
+          onclick="updateActiveBatch()" title="Bu gruptaki döndürme / silme / sıralama değişikliklerini kaydet">
+          Güncelle
+        </button>
+
+        <button onclick="nextBatch()" class="h-10 w-10 shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 transition-colors" title="Sonraki Grup (Alt + Sağ)">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+        </button>
+      </div>
     </section>
   </main>
 
@@ -202,35 +248,6 @@
       <p class="text-sm text-gray-400 pointer-events-none relative z-0">
         <span class="text-blue-400 font-semibold">Dosya seç (PDF, Tiff, Jpeg, Png)</span> veya buraya sürükleyin
       </p>
-    </div>
-    
-    <!-- Batch Mode footer strip: replaces the upload dropzone while a group is
-         open, since you can't upload new files mid-batch-edit anyway. Starts
-         flush with the viewer column above it (not under the sidebar) once the
-         sidebar is a static in-flow column at lg+ — 14.5rem = the sidebar's
-         16rem (w-64) minus this footer's own 1.5rem (sm:px-6) left padding. -->
-    <div id="batch-nav-ui" class="hidden flex items-center gap-2 lg:ml-[14.5rem]">
-      <button onclick="prevBatch()" class="h-10 w-10 shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 transition-colors" title="Önceki Grup (Alt + Sol)">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
-      </button>
-
-      <div class="relative flex-1 min-w-0">
-        <input type="text" id="batch-name-input"
-          class="w-full h-10 bg-gray-800 text-gray-200 pl-3 pr-14 rounded-lg text-sm font-medium border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
-          placeholder="Grup Adı"
-          onchange="renameActiveBatch(this.value)" />
-        <span id="batch-nav-status" class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-mono">0/0</span>
-      </div>
-
-      <button id="btn-update-batch"
-        class="action-btn h-10 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shrink-0"
-        onclick="updateActiveBatch()" title="Bu gruptaki döndürme / silme / sıralama değişikliklerini kaydet">
-        Güncelle
-      </button>
-
-      <button onclick="nextBatch()" class="h-10 w-10 shrink-0 inline-flex items-center justify-center text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 transition-colors" title="Sonraki Grup (Alt + Sağ)">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
-      </button>
     </div>
 
     <div id="upload-status" class="text-xs text-center mt-2 text-gray-500 hidden"></div>
@@ -251,7 +268,7 @@
       <!-- Top: Preview (Large) -->
       <div class="w-full flex-1 bg-gray-950 p-2 sm:p-4 flex flex-col border-b border-gray-800 overflow-hidden relative">
           <div class="flex justify-between items-center mb-2 z-10">
-              <p id="preview-modal-title" class="text-xs text-gray-400 uppercase tracking-widest font-semibold">İlk Sayfa Önizlemesi</p>
+              <p id="preview-modal-title" class="text-xs text-gray-400 uppercase tracking-widest font-semibold">Önizleme Penceresi</p>
               <div class="flex gap-2">
                   <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onmousedown="event.preventDefault();" onclick="zoomPreview(0.2)">+</button>
                   <button type="button" class="bg-gray-800 text-white rounded px-3 py-1 hover:bg-gray-700 text-xs font-bold" onmousedown="event.preventDefault();" onclick="zoomPreview(-0.2)">-</button>
@@ -266,8 +283,7 @@
       <!-- Bottom: Form -->
       <div class="w-full px-3 py-4 sm:px-4 sm:py-6 flex flex-col justify-center shrink-0">
           <div class="mb-4 w-full flex flex-col gap-3">
-            <div class="flex items-center justify-between px-2" id="preview-nav-container" style="display: none;">
-                <button type="button" id="preview-batch-prev-btn" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none disabled:hover:text-gray-400" onmousedown="event.preventDefault();" onclick="previewPrevBatch()" title="Önceki Grup (Alt + Yukarı)"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg></button>
+            <div class="flex items-center justify-center px-2" id="preview-nav-container" style="display: none;">
                 <div class="flex flex-col items-center gap-1">
                     <div class="flex items-center gap-2 text-xs text-gray-400 font-medium" id="preview-page-nav" style="display: none;">
                         <span>Sayfa</span>
@@ -276,9 +292,9 @@
                     </div>
                     <span id="preview-batch-status" class="text-xs text-gray-400 font-medium font-mono" style="display: none;"></span>
                 </div>
-                <button type="button" id="preview-batch-next-btn" class="text-gray-400 hover:text-white px-2 cursor-pointer focus:outline-none disabled:hover:text-gray-400" onmousedown="event.preventDefault();" onclick="previewNextBatch()" title="Sonraki Grup (Alt + Aşağı)"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path></svg></button>
             </div>
             <div class="w-full relative">
+                <label for="custom-filename" class="block text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1.5">Evrakın Mahiyeti</label>
                 <textarea id="custom-filename" rows="3" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-6 py-4 text-white text-sm font-medium focus:outline-none focus:border-blue-500 transition-colors shadow-inner resize-none" placeholder="belge ismini buraya yazınız" autocomplete="off" oninput="scheduleRenameAutoSave()"></textarea>
             </div>
           </div>
@@ -409,6 +425,16 @@
     <div class="context-menu-divider"></div>
     <button onclick="contextMenuAction('clear-selection')"><span>⬚</span> Seçimi Temizle</button>
     <button class="delete-action" onclick="contextMenuAction('delete')"><span>🗑</span> Sil</button>
+  </div>
+
+  <!-- BATCH CONTEXT MENU (right-click on a sidebar PDF item) -->
+  <div id="batch-context-menu" class="page-context-menu hidden">
+    <button onclick="batchContextMenuAction('ai-rename')"><span>⚡</span> AI ile Adlandır</button>
+    <div class="context-menu-divider"></div>
+    <button class="extract-action" onclick="batchContextMenuAction('download')"><span>↓</span> İndir</button>
+    <div class="context-menu-divider"></div>
+    <button onclick="batchContextMenuAction('clear-selection')"><span>⬚</span> Seçimi Temizle</button>
+    <button class="delete-action" onclick="batchContextMenuAction('remove')"><span>🗑</span> Kaldır</button>
   </div>
 
   <script>
@@ -589,7 +615,7 @@
           dragClass: 'sortable-drag',
           forceFallback: true,
           fallbackClass: 'sortable-drag',
-          filter: 'button, a',
+          filter: 'button, a, input',
           preventOnFilter: false
         });
       }
@@ -932,6 +958,80 @@
       if (!e.target.closest('.page-card')) closeCardContextMenu();
     });
 
+    // ─── Sidebar batch selection + right-click menu ──────────────────────
+    let selectedBatchIds = new Set();
+    let batchContextMenuLi = null;
+
+    function toggleOutputSelection(checkbox, fileId) {
+      if (checkbox.checked) selectedBatchIds.add(fileId);
+      else selectedBatchIds.delete(fileId);
+      checkbox.closest('.pdf-item')?.classList.toggle('selected', checkbox.checked);
+    }
+
+    function clearBatchSelection() {
+      selectedBatchIds.clear();
+      document.querySelectorAll('#output-list .pdf-item.selected').forEach(el => el.classList.remove('selected'));
+      document.querySelectorAll('#output-list .output-select-checkbox').forEach(cb => { cb.checked = false; });
+    }
+
+    function openBatchContextMenu(event, itemEl) {
+      event.preventDefault();
+      batchContextMenuLi = itemEl.closest('li');
+
+      const menu = document.getElementById('batch-context-menu');
+      menu.classList.remove('hidden');
+      menu.style.left = event.clientX + 'px';
+      menu.style.top = event.clientY + 'px';
+
+      requestAnimationFrame(() => {
+        const rect = menu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) menu.style.left = Math.max(8, window.innerWidth - rect.width - 8) + 'px';
+        if (rect.bottom > window.innerHeight) menu.style.top = Math.max(8, window.innerHeight - rect.height - 8) + 'px';
+      });
+    }
+
+    function closeBatchContextMenu() {
+      document.getElementById('batch-context-menu')?.classList.add('hidden');
+      batchContextMenuLi = null;
+    }
+
+    // Right-clicking an item that's part of the current multi-selection acts on
+    // the whole selection (same convention as the page-card context menu above);
+    // otherwise it acts on just the one item under the cursor.
+    function getBatchActionTargets(li) {
+      const fileId = getListItemFileId(li);
+      if (fileId && selectedBatchIds.has(fileId)) return Array.from(selectedBatchIds);
+      return fileId ? [fileId] : [];
+    }
+
+    function batchContextMenuAction(action) {
+      const li = batchContextMenuLi;
+      closeBatchContextMenu();
+      if (!li) return;
+      const targetIds = getBatchActionTargets(li);
+      if (targetIds.length === 0) return;
+
+      if (action === 'ai-rename') {
+        runJetRenameAll(targetIds);
+      } else if (action === 'download') {
+        openDownloadConfirmModal(targetIds);
+      } else if (action === 'clear-selection') {
+        clearBatchSelection();
+      } else if (action === 'remove') {
+        targetIds.forEach(id => removeOutputByFileId(id));
+      }
+    }
+
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('batch-context-menu');
+      if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target)) {
+        closeBatchContextMenu();
+      }
+    });
+    document.addEventListener('contextmenu', (e) => {
+      if (!e.target.closest('.pdf-item')) closeBatchContextMenu();
+    });
+
     function closeNamingModal() {
       flushRenameAutoSave(); // fire-and-forget — don't make closing wait on the network
       const m = document.getElementById('naming-modal');
@@ -1073,9 +1173,6 @@
         const hasMultiplePages = batchPreviewItems.length > 1;
         const hasMultipleBatches = queueLength > 1;
 
-        const titleEl = document.getElementById('preview-modal-title');
-        if (titleEl) titleEl.textContent = hasMultiplePages ? "Grup Önizlemesi" : "İlk Sayfa Önizlemesi";
-
         const navContainer = document.getElementById('preview-nav-container');
         if (navContainer) navContainer.style.display = (hasMultiplePages || hasMultipleBatches) ? "flex" : "none";
 
@@ -1096,12 +1193,6 @@
             }
         }
 
-        [document.getElementById('preview-batch-prev-btn'), document.getElementById('preview-batch-next-btn')].forEach(btn => {
-            if (!btn) return;
-            btn.disabled = !hasMultipleBatches;
-            btn.classList.toggle('opacity-30', !hasMultipleBatches);
-            btn.classList.toggle('cursor-not-allowed', !hasMultipleBatches);
-        });
     }
 
     function previewPrevPage() {
@@ -1141,7 +1232,7 @@
 
     function proceedToExtract() {
       let input = document.getElementById('custom-filename').value.replace(/[\r\n]+/g, ' ').trim();
-      currentCustomName = input || (renamingFileId ? 'renamed_file' : 'extracted'); 
+      currentCustomName = input || 'evrak';
       
       closeNamingModal();
       
@@ -1375,6 +1466,7 @@
       if (!li) return;
       restoreExtractedPages(fileId);
       li.remove();
+      selectedBatchIds.delete(fileId);
       updateBulkDownloadVisibility();
       refreshBatchNavStatus();
     }
@@ -1427,7 +1519,7 @@
       if (currentCustomName) {
         displayFilename = `${currentCustomName}.pdf`;
       } else {
-        displayFilename = `extracted.pdf`;
+        displayFilename = `evrak.pdf`;
       }
 
       // Generate a temp UI ID for tracking until response
@@ -1515,7 +1607,11 @@
 
     // ZIP + Word index packaging used to be GET /download-zip(-numbered); it's
     // now built entirely in the browser — see frontend/static/js/document-builder.js.
-    function openDownloadConfirmModal() {
+    // fileIds: optional subset (from the batch right-click menu's "İndir"); omitted
+    // entirely for the sidebar's main "İndir" button, which packages everything.
+    let pendingDownloadFileIds = null;
+    function openDownloadConfirmModal(fileIds) {
+      pendingDownloadFileIds = (fileIds && fileIds.length > 0) ? fileIds : null;
       const m = document.getElementById('download-confirm-modal');
       if (m) m.classList.add('active');
       document.body.classList.add('modal-open');
@@ -1527,20 +1623,59 @@
       document.body.classList.remove('modal-open');
     }
 
-    function confirmDownload(numbered) {
-      closeDownloadConfirmModal();
-      buildAndDownloadZip(numbered);
+    // ─── "Adlandır" menu: Gemini API vs Manuel ───────────────────────────
+    function toggleAiRenameMenu(e) {
+      e.stopPropagation();
+      document.getElementById('ai-rename-menu')?.classList.toggle('hidden');
     }
 
-    async function runJetRenameAll() {
+    function closeAiRenameMenu() {
+      document.getElementById('ai-rename-menu')?.classList.add('hidden');
+    }
+
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('ai-rename-menu');
+      if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && !e.target.closest('#btn-ai-rename')) {
+        closeAiRenameMenu();
+      }
+    });
+
+    // "Manuel": skips Gemini entirely — opens the same rename/preview modal the
+    // pencil icon on a PDF item opens, pre-loaded with the first batch in the list.
+    function openFirstBatchManualRename() {
+      const renameBtn = document.querySelector('#output-list li:not(#output-empty) .rename-btn');
+      if (renameBtn) {
+        renameBtn.click();
+      } else {
+        showStatus('Önce en az bir PDF oluşturmalısınız.', 'text-yellow-400');
+      }
+    }
+
+    function confirmDownload(numbered) {
+      closeDownloadConfirmModal();
+      buildAndDownloadZip(numbered, pendingDownloadFileIds);
+      pendingDownloadFileIds = null;
+    }
+
+    // explicitFileIds: passed by the batch right-click menu ("AI ile Adlandır" on
+    // one item or the current multi-selection). Without it, falls back to the
+    // sidebar checkbox selection if any batches are checked, else every batch —
+    // so the "Adlandır" button's "Gemini API" option automatically respects
+    // whatever's selected without needing its own separate code path.
+    async function runJetRenameAll(explicitFileIds) {
       const apiKey = getGeminiApiKey();
       if (!apiKey) {
         openApiKeyModal();
         return;
       }
 
-      // Find all download buttons in the list to extract the file IDs
-      const downloadBtns = Array.from(document.querySelectorAll('#output-list .download-btn'));
+      const targetIds = (explicitFileIds && explicitFileIds.length > 0)
+        ? explicitFileIds
+        : (selectedBatchIds.size > 0 ? Array.from(selectedBatchIds) : null);
+
+      // Find the relevant download buttons in the list to extract the file IDs
+      const downloadBtns = Array.from(document.querySelectorAll('#output-list .download-btn'))
+        .filter(btn => !targetIds || targetIds.includes(btn.dataset.fileId));
       if (downloadBtns.length === 0) return;
 
       const fileIds = [];
@@ -1589,6 +1724,9 @@
           for (const [fileId, htmlSnippet] of Object.entries(results)) {
              if (listItems[fileId]) {
                listItems[fileId].innerHTML = htmlSnippet;
+               // The fresh partial has no notion of "was selected" — drop it from
+               // the selection set to match the now-unchecked checkbox it just got.
+               selectedBatchIds.delete(fileId);
              }
           }
           // Restore buttons for files that failed or were missing from the AI response
@@ -1961,8 +2099,8 @@
         document.getElementById('batch-name-input').value = filename.replace(/\.pdf$/i, '');
         
         // Highlight active batch in left panel
-        document.querySelectorAll('#output-list li').forEach(li => li.classList.remove('bg-gray-800'));
-        listItems[index].closest('li').classList.add('bg-gray-800');
+        document.querySelectorAll('#output-list li').forEach(li => li.classList.remove('batch-active'));
+        listItems[index].closest('li').classList.add('batch-active');
         
         fetchAndRenderBatch(fileId, filename);
         

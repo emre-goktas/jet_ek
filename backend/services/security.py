@@ -25,4 +25,4 @@ def sanitize_filename(name: str, max_chars: int = 150, max_bytes: int = 210) -> 
     if len(encoded) > max_bytes:
         clean = encoded[:max_bytes].decode("utf-8", "ignore").strip(" .")
 
-    return clean or "untitled"
+    return clean or "evrak"

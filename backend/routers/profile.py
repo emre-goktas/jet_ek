@@ -17,9 +17,14 @@ router = APIRouter()
 
 TEMPLATE_CHOICES = [
     {"id": "sgk", "label": "SGK Müfettiş Ek Belge Listesi", "needs_il": False},
-    {"id": "saglik_bakanligi", "label": "Sağlık Bakanlığı Dizi Pusulası", "needs_il": False},
+    # "saglik_bakanligi" (Sağlık Bakanlığı Dizi Pusulası) is deliberately hidden from
+    # selection here — not deleted, just no longer offered as a choice. Its
+    # templates.json entry, .docx file, and VALID_TEMPLATE_IDS membership are all
+    # left intact so it still works for any profile that already has it saved,
+    # and so it can be re-added to this list later with no further work.
     {"id": "sgk_denetmen", "label": "SGK Denetmen Ek Belge Listesi", "needs_il": True},
     {"id": "duz_tablo", "label": "Şablonsuz (Düz Tablo)", "needs_il": False},
+    {"id": "duz_tablo_excel", "label": "Şablonsuz (Excel)", "needs_il": False},
 ]
 
 IL_LIST = [
