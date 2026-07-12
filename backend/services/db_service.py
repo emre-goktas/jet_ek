@@ -6,7 +6,6 @@ more machinery than the problem needs. One connection per call (SQLite
 handles concurrent readers fine; writes are rare here — a handful of
 profile edits and analytics events, not the document-processing hot path).
 """
-import os
 import json
 import sqlite3
 from pathlib import Path

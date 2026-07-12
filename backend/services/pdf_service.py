@@ -8,15 +8,12 @@ PDF processing service — using PyMuPDF (pymupdf):
 import os
 import re
 import uuid
-import io
 import json
 import time
-import asyncio
 import hashlib
 import tempfile
 import threading
 from pathlib import Path
-from typing import Literal
 
 # pyrefly: ignore [missing-import]
 import pymupdf  # PyMuPDF

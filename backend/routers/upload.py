@@ -1,7 +1,5 @@
 # pyrefly: ignore [missing-import]
 from fastapi import APIRouter, File, UploadFile, HTTPException, Request, Depends
-# pyrefly: ignore [missing-import]
-from fastapi.responses import HTMLResponse
 from pathlib import Path
 import json
 import os
