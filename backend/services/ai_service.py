@@ -64,10 +64,12 @@ LANDSCAPE_HINT = (
 )
 
 RENAME_PROMPT = (
-    "Bu belge resmi bir kurum evrakı, bir şirkete ait doküman veya şahsi bir belgedir. "
-    "Lütfen belgeyi incele ve aşağıdaki kurallara göre çok kısa ve öz bir dosya adı üret:\n"
+    "Bu belge resmi bir kurum evrakı, bir şirkete ait doküman, dilekçe, kayıt ibraz yazısı veya şahsi bir belgedir. "
+    "Belgenin header bölümünde Belgeyi hangi kurumun yazdığını, hitap kısmında(tarih sayıdan sonra sayfaya ortalanmış başlık gibi) kime yazıldığını tespit eedebilirsin"
+    "Lütfen belgeyi incele ve aşağıdaki kurallara göre resmi ve hukuki yazışma diline uygun olarak dosya adı(evrakın mahiyeti) üret:\n"
     "1. Eğer belgede Kurum Adı, Tarih, Sayı ve Konu gibi bilgiler netse: "
-    "'[Kurum Adı] nın,nün(gibi sonekler) [Tarih] tarihli [Sayı] sayılı [Konu] konulu yazısı' formatında oluştur.\n"
+    "'[Kurum Adı] nın,nün(gibi sonekler) [Kurum adı] ne, na(gibi ekler) [Tarih] tarihli [Sayı] sayılı [Konu] konulu yazısı' formatında oluştur.\n"
+    "Örneğin [X] Başkanlığının [y] müdürlüğüne [tarih]li [sayı]lı [konulu] yazısı"
     "2. Eğer resmi bilgiler yoksa belgenin ana başlığını ve varsa altındaki imzanın kime ait olduğunu tespit et. Belge bir "
     "kişiye veya firmaya aitse: '[Kişi/Firma/Unvan Adı] [Belge Başlığı/Türü]' formatında belirt.\n"
     "DİKKAT: SADECE oluşturduğun dosya adını döndür. Hiçbir açıklama yapma ve "
@@ -76,14 +78,15 @@ RENAME_PROMPT = (
 
 RENAME_BATCH_PROMPT = (
     "Burada birden fazla belgenin ilk sayfası var. Her belgeden önce o belgenin 'Document ID'si verilmiştir.\n"
-    "Lütfen her bir belgeyi incele ve aşağıdaki kurallara göre çok kısa ve öz bir dosya adı üret:\n"
+    "Lütfen her bir belgeyi incele ve aşağıdaki kurallara göre resmi ve hukuki yazışma diline uygun olarak dosya adı(evrakın mahiyeti) üret:\n"
+    ""Belgenin header bölümünde Belgeyi hangi kurumun yazdığını, hitap kısmında(tarih sayıdan sonra sayfaya ortalanmış başlık gibi) kime yazıldığını tespit eedebilirsin"
     "1. Eğer belgede Kurum Adı, Tarih, Sayı ve Konu gibi bilgiler netse: "
-    "'[Kurum Adı] nın,nün(gibi sonekler) [Tarih] tarihli [Sayı] sayılı [Konu] konulu yazısı' formatında oluştur.\n"
+     "'[Kurum Adı] nın,nün(gibi sonekler) [Kurum adı] ne, na(gibi ekler) [Tarih] tarihli [Sayı] sayılı [Konu] konulu yazısı' formatında oluştur.\n"
+    "Örneğin [X] Başkanlığının [y] müdürlüğüne [tarih]li [sayı]lı [konu]lu yazısı"
     "2. Eğer resmi bilgiler yoksa belgenin ana başlığını ve varsa altındaki imzanın kime ait olduğunu tespit et. Belge bir "
     "kişiye veya firmaya aitse: '[Kişi/Firma/Unvan Adı] [Belge Başlığı/Türü]' formatında belirt.\n"
     "DİKKAT: Yalnızca geçerli bir JSON objesi döndür. JSON anahtarları (keys) verdiğim 'Document ID' olmalı, "
     "değerler (values) ise senin ürettiğin dosya adı olmalıdır. Hiçbir açıklama yapma ve json tagı kullanmadan sadece json objesini döndür."
-)
 
 def _clean_ai_name(new_name: str) -> str:
     new_name = str(new_name).replace('"', '').replace("'", '').replace('\n', ' ').strip()
