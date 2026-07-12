@@ -1543,7 +1543,8 @@
         if (loader) loader.remove();
         restoreExtractedPages(tempUiId); // extraction failed server-side, undo the optimistic hide
         updateBulkDownloadVisibility();
-        showStatus('✗ Ayıklama isteği başarısız oldu.', 'text-red-400');
+        // postAction() already showed a status message (timeout-specific for
+        // a 404, generic otherwise) — nothing more to show here.
       }
     }
 
@@ -1556,10 +1557,26 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
-        if (!res.ok) return null;
+        if (!res.ok) {
+          // A 404 here almost always means the source/target file was swept
+          // by the 15-minute idle cleanup (see backend/main.py) — reads
+          // already keep an in-use file's clock reset, so this only really
+          // fires after a genuinely long gap with the tab sitting idle.
+          // Surfacing that plainly beats a generic "failed" message that
+          // gives no hint the file itself is simply gone.
+          if (res.status === 404) {
+            showStatus('⏱ Oturumunuz zaman aşımına uğradı — belge uzun süre işlem görmediği için temizlendi. Lütfen dosyayı tekrar yükleyin.', 'text-yellow-400');
+          } else {
+            showStatus('✗ İşlem başarısız oldu.', 'text-red-400');
+          }
+          return null;
+        }
         showStatus('✓ İşlem tamamlandı.', 'text-green-400');
         return await res.text();
-      } catch (e) { return null; }
+      } catch (e) {
+        showStatus('✗ Bağlantı hatası.', 'text-red-400');
+        return null;
+      }
     }
 
     async function showPreview(card) {

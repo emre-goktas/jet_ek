@@ -75,6 +75,22 @@ def user_storage_dir(email: str) -> Path:
 
 _PATH_CACHE: dict[str, Path] = {}
 
+def _touch(path: Path) -> None:
+    """Bumps mtime to now — every successful resolve of a file counts as
+    "still in use" for the 15-minute idle sweep (_sweep_storage in main.py),
+    not just the writes (extract/rename/update) that already do this as a
+    side effect of rewriting the file. Without this, an original upload that
+    a user is still actively extracting batches FROM (pure reads — opening it
+    doesn't write anything) would sit at its upload-time mtime the whole
+    session and could get swept out from under them mid-workflow, even
+    though the tab's been open and busy the entire time. Best-effort: a
+    failed touch shouldn't break the read that triggered it."""
+    try:
+        os.utime(path, None)
+    except OSError:
+        pass
+
+
 def _resolve_path(id_: str, user_dir: Path) -> Path:
     """Resolves the on-disk path for a given id (source or output PDF) within
     user_dir, using an in-memory cache to avoid re-scanning on every lookup.
@@ -86,6 +102,7 @@ def _resolve_path(id_: str, user_dir: Path) -> Path:
     correctly find nothing)."""
     cached = _PATH_CACHE.get(id_)
     if cached is not None and cached.parent == user_dir and cached.exists():
+        _touch(cached)
         return cached
 
     matches = list(user_dir.glob(f"{id_}_*.pdf"))
@@ -93,6 +110,7 @@ def _resolve_path(id_: str, user_dir: Path) -> Path:
         raise FileNotFoundError(id_)
     path = matches[0]
     _PATH_CACHE[id_] = path
+    _touch(path)
     return path
 
 
@@ -295,6 +313,7 @@ def get_pdf_info(file_id: str, user_dir: Path):
     orig_path = user_dir / f"{file_id}_src.pdf"
     if orig_path.exists():
         _PATH_CACHE[file_id] = orig_path
+        _touch(orig_path)
         metadata = get_metadata(file_id, user_dir)
         filename = metadata.get("original_filename", f"{file_id}.pdf")
         doc = pymupdf.open(str(orig_path))
