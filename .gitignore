@@ -15,7 +15,11 @@ testResults/*.md
 
 tests/
 .pytest_cache/
-backend/data/
+# backend/data/ holds real app assets (templates.json, the .docx templates) that
+# must ship with the repo — only the dynamic/runtime parts are ignored.
+backend/data/*.db
+backend/data/*.db-journal
+backend/data/*.log
 
 reports/*
 

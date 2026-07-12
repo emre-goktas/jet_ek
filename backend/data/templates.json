@@ -1,0 +1,88 @@
+[
+  {
+    "id": "sgk",
+    "name": "SGK Müfettiş Ek Belge Listesi",
+    "file_path": "backend/data/sgk_müfettis.docx",
+    "table_mode": "toplam_row",
+    "data_columns": [
+      { "type": "ek_no" },
+      { "type": "mahiyet" },
+      { "type": "sayfa_sayisi" },
+      { "type": "empty" },
+      { "type": "constant", "value": "F" }
+    ],
+    "toplam_cell_column_type": "sayfa_sayisi",
+    "text_placeholders": [
+      { "search": "( ) numaraları", "replace": "({baslangic_no}-{bitis_no}) numaraları" },
+      { "search": "( ) sayfadan", "replace": "({toplam_sayfa}) sayfadan" }
+    ],
+    "signature_table": { "table_index": 1, "name_cell": [0, 1], "title_cell": [1, 1] }
+  },
+  {
+    "id": "saglik_bakanligi",
+    "name": "Sağlık Bakanlığı Dizi Pusulası",
+    "file_path": "backend/data/saglık_bk_teftis.docx",
+    "table_mode": "toplam_row",
+    "header_row_count": 2,
+    "data_columns": [
+      { "type": "ek_no" },
+      { "type": "empty" },
+      { "type": "empty" },
+      { "type": "sayfa_sayisi" },
+      { "type": "mahiyet" }
+    ],
+    "text_placeholders": [
+      { "search": "000", "replace": "{toplam_sayfa}" },
+      { "search": "Yalnız………", "replace": "Yalnız {toplam_sayfa_yazi}" },
+      { "search": "......... tarihinde düzenlenmiştir.", "replace": "{gunun_tarihi} tarihinde düzenlenmiştir." },
+      { "search": "………………..", "replace": "{isim_soyisim}", "whole_paragraph": true, "center": true },
+      { "search": "Başmüfettiş/Müfettiş/Müfettiş Yrd.", "replace": "{unvan}", "whole_paragraph": true, "center": true }
+    ]
+  },
+  {
+    "id": "sgk_denetmen",
+    "name": "SGK Denetmen Ek Belge Listesi",
+    "file_path": "backend/data/sgk_denetmen.docx",
+    "table_mode": "prenumbered_rows",
+    "data_columns": [
+      { "type": "ek_no" },
+      { "type": "sayfa_sayisi" },
+      { "type": "empty" },
+      { "type": "empty" },
+      { "type": "empty" },
+      { "type": "mahiyet" }
+    ],
+    "needs_il": true,
+    "text_placeholders": [
+      { "search": "() Sosyal Güvenlik İl Müdürlüğü", "replace": "{il} Sosyal Güvenlik İl Müdürlüğü" },
+      { "search": "...... (...) ek,", "replace": "{ek_sayisi} ({ek_sayisi_yazi}) ek," },
+      { "search": "...... (...........................) sayfadan ibarettir.", "replace": "{toplam_sayfa} ({toplam_sayfa_yazi}) sayfadan ibarettir." }
+    ],
+    "signature_table": { "table_index": 1, "name_cell": [0, 1], "title_cell": [1, 1] }
+  },
+  {
+    "id": "duz_tablo",
+    "name": "Şablonsuz (Düz Tablo)",
+    "file_path": "backend/data/duz_tablo.docx",
+    "table_mode": "toplam_row",
+    "data_columns": [
+      { "type": "ek_no" },
+      { "type": "mahiyet" },
+      { "type": "sayfa_sayisi" }
+    ],
+    "toplam_cell_column_type": "sayfa_sayisi",
+    "text_placeholders": []
+  },
+  {
+    "id": "duz_tablo_excel",
+    "name": "Şablonsuz (Excel)",
+    "format": "xlsx",
+    "table_mode": "toplam_row",
+    "data_columns": [
+      { "type": "ek_no" },
+      { "type": "mahiyet" },
+      { "type": "sayfa_sayisi" }
+    ],
+    "toplam_cell_column_type": "sayfa_sayisi"
+  }
+]
