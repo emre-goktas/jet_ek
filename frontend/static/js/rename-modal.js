@@ -39,6 +39,10 @@
     }
 
     function doExtract() {
+      if (quickSplitModeActive) {
+        runQuickSplit();
+        return;
+      }
       if (selectedPages.size === 0) return;
       currentCustomName = ''; // Force auto-naming
       confirmExtract(true);

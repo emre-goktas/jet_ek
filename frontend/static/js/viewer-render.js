@@ -16,7 +16,14 @@
     function getPdfDoc(pdfId) {
       if (!pdfDocCache.has(pdfId)) {
         const task = pdfjsLib.getDocument({ url: `/pdf-source/${pdfId}` });
-        pdfDocCache.set(pdfId, task.promise);
+        // A transient fetch/parse failure must not poison every future attempt —
+        // evict so the next getPdfDoc() call actually retries instead of forever
+        // reusing this same rejected promise (see renderPageCanvas's retry).
+        const promise = task.promise.catch(err => {
+          if (pdfDocCache.get(pdfId) === promise) pdfDocCache.delete(pdfId);
+          throw err;
+        });
+        pdfDocCache.set(pdfId, promise);
       }
       return pdfDocCache.get(pdfId);
     }
@@ -35,7 +42,8 @@
       }
     }
 
-    async function renderPageCanvas(canvas) {
+    // attempt is internal (retry bookkeeping) — callers always call with just canvas.
+    async function renderPageCanvas(canvas, attempt = 0) {
       if (canvas.dataset.rendered === '1') return;
       const pdfId = canvas.dataset.pdfId;
       const pageIndex = parseInt(canvas.dataset.pageIndex, 10);
@@ -49,6 +57,12 @@
         canvas.dataset.rendered = '1';
       } catch (e) {
         console.error('Sayfa render edilemedi:', pdfId, pageIndex, e);
+        // A card that's already fully in view won't get a fresh IntersectionObserver
+        // event to hang a retry off of, so retry here directly (bounded, with
+        // backoff) instead of leaving it permanently blank on one transient failure.
+        if (attempt < 2 && document.body.contains(canvas)) {
+          setTimeout(() => renderPageCanvas(canvas, attempt + 1), 800 * (attempt + 1));
+        }
       }
     }
 
@@ -72,8 +86,13 @@
       pageRenderObserver = new IntersectionObserver((entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            renderPageCanvas(entry.target);
-            pageRenderObserver.unobserve(entry.target);
+            const canvas = entry.target;
+            // Only stop observing once it actually rendered — unobserving
+            // unconditionally meant a single failed fetch/parse left that page
+            // permanently blank, since nothing would ever ask it to render again.
+            renderPageCanvas(canvas).then(() => {
+              if (canvas.dataset.rendered === '1') pageRenderObserver.unobserve(canvas);
+            });
           }
         }
       }, { rootMargin: '200px' });

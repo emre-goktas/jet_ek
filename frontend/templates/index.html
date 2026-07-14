@@ -172,7 +172,7 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-          <button
+          <button id="select-all-btn"
             class="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 transition-colors"
             onclick="selectAllPages()">
             Tümünü Seç
@@ -181,6 +181,12 @@
             class="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 transition-colors"
             onclick="clearSelection()">
             Seçimi Temizle
+          </button>
+          <button id="quick-split-toggle-btn"
+            class="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 transition-colors"
+            onclick="toggleQuickSplitMode()"
+            title="Aktifken sayfalara tıklamak grup başlangıcı işaretler; Ayıkla'ya basınca aralarındaki her şey ayrı ayrı ayıklanır">
+            ⚡ Hızlı Ayıkla
           </button>
         </div>
 
@@ -418,7 +424,9 @@
 
   <!-- PAGE CONTEXT MENU (right-click on a card) -->
   <div id="page-context-menu" class="page-context-menu hidden">
-    <button class="extract-action" onclick="contextMenuAction('extract')"><span>✂</span> Ayıkla</button>
+    <button id="ctx-menu-extract-btn" class="extract-action" onclick="contextMenuAction('extract')"><span>✂</span> Ayıkla</button>
+    <button id="ctx-menu-rule-split-btn" onclick="event.stopPropagation(); contextMenuAction('rule-split')"><span>#</span> Kurallı Böl</button>
+    <button id="ctx-menu-last-page-btn" class="hidden" onclick="contextMenuAction('mark-last-page')"><span>🏁</span> Son Sayfa</button>
     <button onclick="contextMenuAction('clear-selection')"><span>⬚</span> Seçimi Temizle</button>
     <button class="delete-action" onclick="contextMenuAction('delete')"><span>🗑</span> Sil</button>
     <div class="context-menu-divider"></div>
@@ -436,6 +444,17 @@
     <button class="delete-action" onclick="batchContextMenuAction('remove')"><span>🗑</span> Kaldır</button>
   </div>
 
+  <!-- RULE SPLIT POPUP (Kurallı Böl) — a small floating box, not a modal-overlay:
+       no dimmed backdrop, no body.modal-open scroll lock, so the page stays fully
+       usable behind it (see split-mode.js). -->
+  <div id="rule-split-popup" class="rule-split-popup hidden" onclick="event.stopPropagation()">
+    <label for="rule-split-input">Kaçarlı bölünsün?</label>
+    <input type="number" id="rule-split-input" min="1" step="1" placeholder="Örn: 2"
+      onkeydown="if(event.key === 'Enter') submitRuleSplit()">
+    <p class="rule-split-error" id="rule-split-error"></p>
+    <button type="button" onclick="submitRuleSplit()">Böl</button>
+  </div>
+
   <script src="/static/js/viewer-state.js" defer></script>
   <script src="/static/js/viewer-render.js" defer></script>
   <script src="/static/js/upload-handlers.js" defer></script>
@@ -446,6 +465,7 @@
   <script src="/static/js/download-actions.js" defer></script>
   <script src="/static/js/preview-zoom.js" defer></script>
   <script src="/static/js/batch-mode.js" defer></script>
+  <script src="/static/js/split-mode.js" defer></script>
 </body>
 
 </html>

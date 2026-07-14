@@ -33,3 +33,11 @@
     let originalPdfId = null;
     let currentBatchIndex = -1;
 
+    // Hızlı Ayıkla (quick/anchor split) — see split-mode.js. While active, clicking
+    // a page card marks/unmarks it as a group-start anchor instead of selecting it.
+    let quickSplitModeActive = false;
+    let splitAnchors = new Set();
+    // "Son Sayfa" closers (right-click menu) — ends a group without starting a
+    // new one, so a document's final group can span multiple pages.
+    let splitClosers = new Set();
+

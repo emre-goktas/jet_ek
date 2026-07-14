@@ -4,10 +4,12 @@ Extracts the selected page range as a new PDF.
 Response: HTML fragment added to the left panel via HTMX.
 """
 import logging
+from pathlib import Path
 # pyrefly: ignore [missing-import]
 import pymupdf
 # pyrefly: ignore [missing-import]
 from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi.responses import JSONResponse
 # pyrefly: ignore [missing-import]
 from pydantic import BaseModel
 
@@ -63,6 +65,70 @@ def extract_pages(req: ExtractRequest, request: Request, current_user: dict = De
             "custom_name": req.custom_name or "",
         },
     )
+
+
+# ─── Batch split (Kurallı Böl / Hızlı Ayıkla) ─────────────────────────────
+# Both frontend modes pre-compute an ordered list of page-groups (never
+# crossing a source document's boundary — enforced client-side) and post them
+# all here in one request. A bulk endpoint exists specifically so that
+# splitting e.g. 500 pages into 100 tiny PDFs doesn't mean 100 round trips
+# against /extract's 30/minute limit — one call does all of it server-side.
+MAX_SPLIT_GROUPS = 300
+
+class SplitGroup(BaseModel):
+    pages: list[PageExtract]
+
+class BatchSplitRequest(BaseModel):
+    groups: list[SplitGroup]
+
+
+@router.post("/extract/batch-split", response_class=JSONResponse)
+@limiter.limit("10/minute")
+def batch_split(req: BatchSplitRequest, request: Request, current_user: dict = Depends(auth_service.get_current_user)):
+    """Extracts each group as its own PDF, named '{kaynak}_{ilk}-{son}.pdf'.
+    Returns {"group-<i>": html} for whichever groups succeeded — a source file
+    vanishing mid-batch (e.g. swept by the idle cleanup) only drops that one
+    group instead of failing the whole request.
+    """
+    if not req.groups:
+        raise HTTPException(status_code=400, detail="No groups to split.")
+    if len(req.groups) > MAX_SPLIT_GROUPS:
+        raise HTTPException(status_code=400, detail=f"Tek seferde en fazla {MAX_SPLIT_GROUPS} parça oluşturulabilir.")
+
+    user_dir = pdf_service.user_storage_dir(current_user["email"])
+    response_htmls = {}
+
+    for i, group in enumerate(req.groups):
+        if not group.pages:
+            continue
+        try:
+            source_pdf_id = group.pages[0].pdf_id
+            _, source_filename, _ = pdf_service.get_pdf_info(source_pdf_id, user_dir)
+            source_stem = Path(source_filename).stem
+            page_numbers = sorted(p.page_idx + 1 for p in group.pages)
+            page_range = str(page_numbers[0]) if page_numbers[0] == page_numbers[-1] else f"{page_numbers[0]}-{page_numbers[-1]}"
+            custom_name = f"{source_stem}_{page_range}"
+
+            pages_dicts = [p.model_dump() for p in group.pages]
+            file_id, filename, actual_count = pdf_service.extract_pages(pages_dicts, user_dir, custom_name=custom_name)
+        except Exception:
+            logger.exception(f"Batch split failed for group {i}")
+            continue
+
+        label = f"{actual_count} Pages" if actual_count > 1 else f"Page {page_numbers[0]}"
+        context = {
+            "request": request,
+            "file_id": file_id,
+            "filename": filename,
+            "label": label,
+            "page_count": actual_count,
+            "custom_name": custom_name,
+        }
+        template_response = templates.TemplateResponse(request=request, name="partials/pdf_item.html", context=context)
+        response_htmls[f"group-{i}"] = template_response.body.decode("utf-8")
+
+    return JSONResponse(content=response_htmls)
+
 
 class RenameRequest(BaseModel):
     custom_name: str

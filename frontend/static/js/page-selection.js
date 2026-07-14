@@ -5,6 +5,7 @@
  */
 
     function selectAllPages() {
+      if (quickSplitModeActive) return; // "select all" has no meaning while marking anchors
       document.querySelectorAll('.page-card').forEach(c => {
         if (!c.classList.contains('extracted-page')) selectedPages.add(c.id);
       });
@@ -13,6 +14,10 @@
     }
 
     function clearSelection() {
+      if (quickSplitModeActive) {
+        clearSplitAnchors(); // "Seçimi Temizle" repurposed to clear anchors in this mode
+        return;
+      }
       selectedPages.clear();
       selectionHistory = [];
       lastClickedCardId = null;
@@ -48,6 +53,7 @@
     }
 
     function toggleBatchSelection(checkbox, pdfId) {
+      if (quickSplitModeActive) { checkbox.checked = false; return; } // no bulk "select doc" while marking anchors
       document.querySelectorAll(`.page-card[data-pdf-id="${pdfId}"]`).forEach(card => {
         if (card.classList.contains('extracted-page')) return;
         if (checkbox.checked) selectedPages.add(card.id);
@@ -65,6 +71,15 @@
     function applyPageSelection(checkbox, event) {
       const card = checkbox.closest('.page-card');
       if (!card || card.classList.contains('extracted-page')) return;
+
+      // Hızlı Ayıkla repurposes every page click as "mark/unmark group start"
+      // instead of normal selection — keep the checkbox's own visual state in
+      // sync with the (untouched) real selection rather than the anchor set.
+      if (quickSplitModeActive) {
+        checkbox.checked = selectedPages.has(card.id);
+        toggleSplitAnchor(card);
+        return;
+      }
 
       const cid = card.id;
       const shouldSelect = checkbox.checked;
@@ -116,6 +131,7 @@
     }
 
     function updateSelectionInfo() {
+      if (quickSplitModeActive) { updateQuickSplitInfo(); return; }
       const info = document.getElementById('selection-info');
       if(info) info.textContent = selectedPages.size === 0 ? 'Sayfa seçin' : `${selectedPages.size} sayfa seçildi.`;
     }
@@ -175,6 +191,17 @@
           updateSelectionInfo();
         }
         doExtract();
+      } else if (action === 'rule-split') {
+        // Same "act on whatever's under the cursor even if unselected" convention
+        // as 'extract' above.
+        if (!selectedPages.has(card.id)) {
+          selectedPages.add(card.id);
+          updateHighlight();
+          updateSelectionInfo();
+        }
+        openRuleSplitPopup();
+      } else if (action === 'mark-last-page') {
+        toggleDocCloser(card);
       } else if (action === 'clear-selection') {
         clearSelection();
       } else if (action === 'delete') {

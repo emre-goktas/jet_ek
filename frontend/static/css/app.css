@@ -209,6 +209,140 @@
   margin: 4px 2px;
 }
 
+/* ─── Split anchor (Hızlı Ayıkla group-start marker) ──────────── */
+/* Deliberately a different color from .selected (red) so a page can't be
+   mistaken for a normal selection while in anchor-marking mode. */
+.page-card.split-anchor {
+  border-color: #f59e0b;
+  /* amber-500 */
+  background: rgba(245, 158, 11, 0.12);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
+}
+
+.page-card.split-anchor .page-number-small {
+  color: #fbbf24;
+  /* amber-400 */
+}
+
+#quick-split-toggle-btn.active {
+  background: #d97706;
+  /* amber-600 */
+  border-color: #f59e0b;
+  color: #fff;
+}
+
+/* Briefly flashed on a document's last page when Hızlı Ayıkla is run without
+   an explicit closing anchor there — see findDocsMissingClosingAnchor(). */
+.page-card.split-anchor-missing {
+  border-color: #f97316;
+  /* orange-500 */
+  animation: split-anchor-missing-pulse 0.5s ease-in-out 3;
+}
+
+@keyframes split-anchor-missing-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.85);
+  }
+}
+
+/* "Son Sayfa" closer — ends a group without starting a new one (see
+   setDocCloser() in split-mode.js). Violet, deliberately distinct from the
+   amber start-anchor and the red selected/orange-warning colors. */
+.page-card.split-closer {
+  border-color: #a855f7;
+  /* violet-500 */
+  background: rgba(168, 85, 247, 0.14);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.3);
+}
+
+.page-card.split-closer .page-number-small {
+  color: #c084fc;
+  /* violet-400 */
+}
+
+/* Proactive "this is where the document actually ends" badge, shown on every
+   loaded document's real last page for the whole time Hızlı Ayıkla is active
+   (markDocLastPageHints) — so the user doesn't have to guess or scroll to
+   find it before deciding how to close each document's final group. */
+.page-card.doc-last-page-hint::after {
+  content: "Belge Sonu";
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(139, 92, 246, 0.9);
+  /* violet-500ish */
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 1px 7px;
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ─── Rule split popup (Kurallı Böl) ──────────────────────────── */
+/* A small floating box, not a .modal-overlay — no backdrop, no scroll lock,
+   the page stays fully usable behind it (see split-mode.js). */
+.rule-split-popup {
+  position: fixed;
+  z-index: 60;
+  width: 220px;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  padding: 12px;
+}
+
+.rule-split-popup label {
+  display: block;
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.rule-split-popup input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1f2937;
+  border: 1px solid #374151;
+  color: #e5e7eb;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.rule-split-popup .rule-split-error {
+  color: #f87171;
+  font-size: 11px;
+  min-height: 14px;
+  margin: 0 0 6px;
+}
+
+.rule-split-popup button {
+  width: 100%;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rule-split-popup button:hover {
+  background: #3b82f6;
+}
+
 .drag-handle {
   cursor: grab;
   color: #9ca3af;
