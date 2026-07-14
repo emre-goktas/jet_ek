@@ -181,6 +181,13 @@
   color: #fff;
 }
 
+/* Tailwind's .hidden (specificity 0-1-0) loses to ".page-context-menu button"
+   (0-1-1, an extra element selector) and never actually hides these buttons —
+   this override restores it for the show/hide toggles in split-mode.js. */
+.page-context-menu button.hidden {
+  display: none;
+}
+
 .page-context-menu button.extract-action {
   color: #60a5fa;
   /* blue-400 */

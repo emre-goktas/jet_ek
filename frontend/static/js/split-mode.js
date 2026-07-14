@@ -118,8 +118,23 @@
     // pages (e.g. anchor at 45, closer at 50 → one 45-50 group, not a lone 50).
     // Only one closer per document makes sense, so marking a new one replaces
     // any earlier one for that same pdf_id.
+    //
+    // A closer only makes sense once a group is already open — otherwise
+    // computeQuickSplitGroups() just silently drops it (no anchor means no
+    // open `current` to push it into), which looked to the user like the cut
+    // came out "reversed". Rather than leave that footgun to the user's own
+    // ordering discipline, require a start-anchor to already exist earlier in
+    // this same document (strictly before this card, so converting a doc's
+    // *only* anchor into a closer via this same click doesn't count).
     function setDocCloser(card) {
       const pid = card.dataset.pdfId;
+      const docCards = orderedVisiblePageCards().filter(c => c.dataset.pdfId === pid);
+      const cardIdx = docCards.indexOf(card);
+      const hasPrecedingAnchor = docCards.slice(0, cardIdx).some(c => splitAnchors.has(c.id));
+      if (!hasPrecedingAnchor) {
+        showStatus('İlk sayfa seçimleri tamamlanmadan son sayfa seçilemez.', 'text-yellow-400');
+        return;
+      }
       Array.from(splitClosers).forEach(id => {
         const existing = document.getElementById(id);
         if (existing && existing.dataset.pdfId === pid) {
