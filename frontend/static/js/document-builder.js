@@ -794,6 +794,22 @@ async function cleanupDeliveredFiles(fileIds) {
   });
 }
 
+// A transient network-layer hiccup (dropped QUIC stream through a proxy/tunnel,
+// e.g. Cloudflare) makes fetch() reject outright rather than resolve with a bad
+// status — retry a couple of times with backoff before giving up, same idea as
+// viewer-render.js's renderPageCanvas retry, so one bad connection blip doesn't
+// fail an entire multi-file ZIP.
+async function fetchWithRetry(url, attempts = 3) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fetch(url);
+    } catch (e) {
+      if (attempt === attempts - 1) throw e;
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    }
+  }
+}
+
 /**
  * Replaces GET /download-zip and /download-zip-numbered: fetches each
  * output's PDF bytes from /pdf-source/{id}, optionally stamps EK numbers,
@@ -811,7 +827,7 @@ async function buildAndDownloadZip(numbered, fileIdFilter) {
     const zipEntries = {};
 
     for (const f of filesData) {
-      const res = await fetch(`/pdf-source/${encodeURIComponent(f.file_id)}`);
+      const res = await fetchWithRetry(`/pdf-source/${encodeURIComponent(f.file_id)}`);
       if (!res.ok) continue; // matches backend's "skip files that fail to resolve"
       let pdfBytes = new Uint8Array(await res.arrayBuffer());
       if (numbered) {
