@@ -11,9 +11,10 @@ from slowapi.util import get_remote_address
 
 
 def get_client_ip(request: Request) -> str:
-    """Real client IP behind Cloudflare Tunnel. The app binds to 127.0.0.1 and only
-    cloudflared connects to it locally, so request.client.host is always the tunnel
-    daemon itself — every request would otherwise share one rate-limit bucket.
+    """Real client IP behind Cloudflare Tunnel. In docker-compose.yml, the app is
+    never published to the host — only the cloudflared container can reach it, over
+    the internal compose network — so request.client.host is always the tunnel
+    daemon itself; every request would otherwise share one rate-limit bucket.
     CF-Connecting-IP is set by Cloudflare's edge and can't be spoofed by the client
     through the tunnel, so it's trusted directly; falls back to get_remote_address
     for local/direct access (e.g. dev without cloudflared in front)."""

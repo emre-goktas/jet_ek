@@ -1,0 +1,41 @@
+services:
+  jetek:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Named volumes (not bind mounts): on first run Docker copies the
+      # image's existing backend/data/ contents (templates.json, the .docx
+      # templates) into the empty volume before the app ever starts, so
+      # jetek.db/app.log persist across rebuilds without losing those static
+      # assets. backend/storage/ persists in-flight user files across a
+      # `docker compose up --build` redeploy — its own 15-min/nightly sweep
+      # (backend/main.py) still empties it in normal operation regardless.
+      - jetek_data:/app/backend/data
+      - jetek_storage:/app/backend/storage
+    networks:
+      - cloudflare-net
+    # Deliberately no `ports:` — jetek is never published to the host's
+    # network interfaces, only reachable from the already-running standalone
+    # `cloudflared` container over cloudflare-net (see below). This is the
+    # containerized equivalent of the app binding to 127.0.0.1 that
+    # rate_limit.py's get_client_ip() docstring describes for a bare-metal
+    # deploy.
+
+# cloudflared runs as its own separate container on this host (started
+# outside this compose file, not managed here) — this project only joins its
+# network so it can reach jetek by name. Before first `docker compose up`,
+# create the network and attach the existing container to it once:
+#   docker network create cloudflare-net
+#   docker network connect cloudflare-net cloudflared
+# Then in the Cloudflare Zero Trust dashboard, point the tunnel's public
+# hostname route (Service URL) at http://jetek:7860 — "jetek" resolves
+# because both containers now share cloudflare-net.
+networks:
+  cloudflare-net:
+    external: true
+
+volumes:
+  jetek_data:
+  jetek_storage:

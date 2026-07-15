@@ -1,0 +1,33 @@
+.venv/
+venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+.dockerignore
+
+# Runtime/user data — never bake these into the image. backend/data/ also
+# holds real static assets (templates.json, the .docx templates) that DO need
+# to ship, so only the dynamic files are excluded here (mirrors .gitignore).
+backend/storage/*
+!backend/storage/.gitkeep
+backend/data/*.db
+backend/data/*.db-journal
+backend/data/*.log
+
+*.pdf
+.env
+.env.example
+.DS_Store
+notes/
+.aider*
+testResults/*.md
+tests/
+.pytest_cache/
+reports/
+CLAUDE.md
+README.md
+LICENSE
+.claude/
