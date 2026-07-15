@@ -23,18 +23,23 @@
   <link rel="stylesheet" href="/static/css/app.css?v=7" />
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
   <!-- SortableJS script'ini ekle -->
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-  <!-- pdf.js: sayfa önizlemeleri artık sunucuda değil, tarayıcıda render ediliyor -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
+  <!-- pdf.js: sayfa önizlemeleri artık sunucuda değil, tarayıcıda render ediliyor.
+       defer'lı: workerSrc ataması DOMContentLoaded'a taşındı çünkü inline script'lerde
+       (src'siz) defer attribute'unun tarayıcılarda hiçbir etkisi yok — deferred pdf.min.js
+       yüklenmeden hemen ardından senkron çalışırdı ve pdfjsLib undefined hatası verirdi. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
   <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    document.addEventListener('DOMContentLoaded', () => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    });
   </script>
   <!-- pdf-lib: görsel (jpeg/png) -> PDF dönüşümü ve EK numarası damgalama artık tarayıcıda -->
-  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js" defer></script>
   <!-- fflate: ZIP paketleme (ve .docx dosyalarının kendisi de bir zip olduğu için sgk şablonunu
        düzenlemek) tarayıcıda. Salt MIT lisanslı, bağımlılıksız — resmi evrak işleyen bu proje
        için JSZip'in MIT/GPLv3 çift lisansından kaçınmak amacıyla tercih edildi. -->
-  <script src="https://unpkg.com/fflate@0.8.2/umd/index.js"></script>
+  <script src="https://unpkg.com/fflate@0.8.2/umd/index.js" defer></script>
   <script src="/static/js/document-builder.js" defer></script>
   <style>
     @keyframes domino-jump {
