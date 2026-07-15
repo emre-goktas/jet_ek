@@ -67,6 +67,9 @@ async def onboarding_page(request: Request):
             "profile": profile,
             "template_choices": TEMPLATE_CHOICES,
             "il_list": IL_LIST,
+            # Only nag for consent once — an existing profile that already has a
+            # recorded timestamp never sees the checkboxes again on later edits.
+            "needs_consent": profile is None or not profile.get("kvkk_consent_at"),
         },
     )
 
@@ -82,6 +85,8 @@ class ProfileRequest(BaseModel):
     title: str = ""
     template_id: str
     il: str | None = None
+    kvkk_consent: bool = False
+    terms_consent: bool = False
 
     @field_validator("name")
     @classmethod
@@ -111,10 +116,19 @@ async def save_profile(req: ProfileRequest, request: Request):
     if not needs_il:
         il = None
 
+    existing_profile = db_service.get_profile(user["email"])
+    needs_consent = existing_profile is None or not existing_profile.get("kvkk_consent_at")
+    if needs_consent and not (req.kvkk_consent and req.terms_consent):
+        raise HTTPException(
+            status_code=400,
+            detail="Devam etmek için KVKK Aydınlatma Metni'ni ve Kullanım Koşulları/Sorumluluk Reddi Bildirimi'ni onaylamanız gerekmektedir.",
+        )
+
     try:
         profile = db_service.upsert_profile(
             email=user["email"], name=req.name, title=req.title.strip()[:150],
             template_id=req.template_id, il=il,
+            consent_given=req.kvkk_consent and req.terms_consent,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

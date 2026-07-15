@@ -27,10 +27,17 @@ def _init_db():
                 title TEXT,
                 template_id TEXT NOT NULL,
                 il TEXT,
+                kvkk_consent_at TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
         """)
+        # Migration for DBs created before kvkk_consent_at existed — ALTER TABLE
+        # ADD COLUMN is a no-op-safe way to bring an older users table up to date
+        # without a full migration framework for a single nullable column.
+        existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        if "kvkk_consent_at" not in existing_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN kvkk_consent_at TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS usage_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,23 +94,30 @@ def get_profile(email: str) -> dict | None:
         return dict(row) if row else None
 
 
-def upsert_profile(email: str, name: str, title: str, template_id: str, il: str | None) -> dict:
+def upsert_profile(email: str, name: str, title: str, template_id: str, il: str | None, consent_given: bool = False) -> dict:
     if template_id not in VALID_TEMPLATE_IDS:
         raise ValueError(f"Unknown template_id: {template_id}")
 
     now = _now()
     with _connect() as conn:
-        existing = conn.execute("SELECT created_at FROM users WHERE email = ?", (email,)).fetchone()
+        existing = conn.execute("SELECT created_at, kvkk_consent_at FROM users WHERE email = ?", (email,)).fetchone()
         created_at = existing["created_at"] if existing else now
+        # Once recorded, a consent timestamp is never cleared or overwritten by a
+        # later profile edit that doesn't re-send consent — the checkboxes only
+        # render (and consent_given can only be True) on the first save, or a
+        # future save if it was somehow never recorded. See profile.py's
+        # needs_consent check, which is what actually gates this being required.
+        existing_consent_at = existing["kvkk_consent_at"] if existing else None
+        consent_at = existing_consent_at or (now if consent_given else None)
         conn.execute(
             """
-            INSERT INTO users (email, name, title, template_id, il, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (email, name, title, template_id, il, kvkk_consent_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(email) DO UPDATE SET
                 name=excluded.name, title=excluded.title, template_id=excluded.template_id,
-                il=excluded.il, updated_at=excluded.updated_at
+                il=excluded.il, kvkk_consent_at=excluded.kvkk_consent_at, updated_at=excluded.updated_at
             """,
-            (email, name, title, template_id, il, created_at, now),
+            (email, name, title, template_id, il, consent_at, created_at, now),
         )
     return get_profile(email)
 

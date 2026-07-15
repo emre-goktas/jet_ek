@@ -51,7 +51,7 @@ def extract_pages(req: ExtractRequest, request: Request, current_user: dict = De
         logger.exception(f"PDF extraction failed for request with {len(req.pages)} pages")
         raise HTTPException(status_code=500, detail="PDF extraction failed.")
 
-    label = f"{actual_count} Pages" if actual_count > 1 else f"Page {req.pages[0].page_idx + 1}"
+    label = f"{actual_count} sayfa"
 
     return templates.TemplateResponse(
         request=request,
@@ -115,7 +115,7 @@ def batch_split(req: BatchSplitRequest, request: Request, current_user: dict = D
             logger.exception(f"Batch split failed for group {i}")
             continue
 
-        label = f"{actual_count} Pages" if actual_count > 1 else f"Page {page_numbers[0]}"
+        label = f"{actual_count} sayfa"
         context = {
             "request": request,
             "file_id": file_id,
@@ -187,7 +187,7 @@ def update_pdf(file_id: str, req: UpdateRequest, request: Request, current_user:
         logger.exception(f"Update failed for file_id={file_id}")
         raise HTTPException(status_code=500, detail="Update failed.")
 
-    label = f"{page_count} Pages" if page_count > 1 else "Page 1"
+    label = f"{page_count} sayfa"
     custom_name = pdf_service.get_metadata(file_id, user_dir).get("custom_name", "")
 
     return templates.TemplateResponse(

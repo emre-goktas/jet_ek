@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JETEK — KVKK Aydınlatma Metni ve Kullanım Koşulları</title>
+  <link rel="icon" type="image/jpeg" href="/static/icon.jpg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#eff6ff', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
+
+  <div class="max-w-3xl mx-auto px-5 sm:px-8 py-10 sm:py-14">
+
+    <div class="flex items-center gap-2 mb-8">
+      <div class="relative flex items-center justify-center bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg p-1.5 shadow-[0_0_15px_rgba(34,211,238,0.4)]">
+        <svg class="w-5 h-5 text-gray-900 translate-x-0.5 -translate-y-0.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+          <path d="M22 2L11 13"></path>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+        </svg>
+      </div>
+      <h1 class="text-xl font-black tracking-widest italic">
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-blue-600">JET</span><span class="text-gray-100">EK</span>
+      </h1>
+      <span class="text-gray-600 text-sm ml-1">/ KVKK Aydınlatma Metni ve Kullanım Koşulları</span>
+    </div>
+
+    <!-- ═══════════════════════ KVKK AYDINLATMA METNİ ═══════════════════════ -->
+    <section id="kvkk" class="scroll-mt-6">
+      <h2 class="text-lg font-bold text-gray-100 mb-1">KVKK Aydınlatma Metni</h2>
+      <p class="text-xs text-gray-500 mb-6">Son güncelleme: 15 Temmuz 2026</p>
+
+      <div class="flex flex-col gap-5 text-sm text-gray-300 leading-relaxed">
+        <p>
+          6698 sayılı Kişisel Verilerin Korunması Kanunu ("KVKK") uyarınca,
+          <strong class="text-gray-100">Emre</strong> ("Veri Sorumlusu") olarak,
+          JETEK uygulamasını ("Uygulama") kullanımınız sırasında elde edilen kişisel verilerinizin
+          işlenmesine ilişkin olarak sizi bilgilendirmek isteriz. JETEK, bir şirket veya kurum ürünü
+          değil; Veri Sorumlusu tarafından kendi işyerindeki meslektaşlarının kullanımına açılmış
+          kişisel bir araçtır.
+        </p>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">1. Veri Sorumlusu</h3>
+          <p>
+            Veri Sorumlusu: <strong class="text-gray-100">Emre</strong><br>
+            KVKK başvuruları için e-posta: <strong class="text-gray-100">gaziemre71@gmail.com</strong>
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">2. İşlenen Kişisel Veri Kategorileri</h3>
+          <ul class="list-disc list-outside pl-5 flex flex-col gap-1.5">
+            <li><strong class="text-gray-200">Kimlik ve iletişim bilgileri:</strong> Google ile Giriş (Google Sign-In) akışı üzerinden alınan ad-soyad ve e-posta adresiniz. JETEK sizden ayrıca şifre veya başka bir kimlik bilgisi talep etmez.</li>
+            <li><strong class="text-gray-200">Profil bilgileri:</strong> onboarding formunda girdiğiniz unvan, il ve varsayılan ek belge şablonu tercihiniz.</li>
+            <li><strong class="text-gray-200">İşlem/kullanım kayıtları:</strong> hangi özellikleri (yükleme, ayıklama, AI ile adlandırma vb.) ne zaman kullandığınıza dair günlük kayıtları ve AI ile adlandırma denemelerinin dosya adı, başarı durumu ve süresi bilgisi — hizmet kalitesini ölçmek ve hataları teşhis etmek amacıyla tutulur.</li>
+            <li><strong class="text-gray-200">Yüklediğiniz belge içerikleri:</strong> Uygulamaya yüklediğiniz PDF/TIFF belgelerin sayfa görüntüleri ve içeriği, yalnızca işlem süresince sunucuda geçici olarak tutulur. Bu belgeler indirme sonrasında ve/veya en geç günlük otomatik temizlik rutini ile güvenli silme yöntemiyle kalıcı olarak silinir; sunucuda kalıcı bir belge arşivi tutulmaz.</li>
+            <li><strong class="text-gray-200">Oturum çerezi:</strong> giriş yapmış kalmanızı sağlayan imzalı bir oturum çerezi (jetek_session) kullanılır. Bu çerez yalnızca kimlik doğrulama amacıyla kullanılır; reklam veya izleme amaçlı bir çerez değildir.</li>
+            <li><strong class="text-gray-200">Gemini API anahtarınız (isteğe bağlı):</strong> AI ile adlandırma özelliğini kullanmayı tercih ederseniz, kendi Google Gemini API anahtarınızı yalnızca kendi tarayıcınızın yerel deposunda (localStorage) saklarsınız; bu anahtar JETEK sunucusuna hiçbir şekilde gönderilmez veya kaydedilmez, yalnızca AI isteği sırasında doğrudan Google'a iletilir.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">3. Kişisel Verilerin İşlenme Amaçları</h3>
+          <p>
+            Kişisel verileriniz; kimlik doğrulama ve oturum yönetiminin sağlanması, belge ayıklama/
+            düzenleme/isimlendirme hizmetinin sunulması, hizmet kalitesinin ve performansının ölçülmesi,
+            hataların teşhisi ve giderilmesi ile yürürlükteki mevzuattan doğan yükümlülüklerin yerine
+            getirilmesi amaçlarıyla sınırlı olarak işlenir.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">4. Kişisel Verilerin İşlenmesinin Hukuki Sebebi</h3>
+          <p>
+            Kişisel verileriniz, KVKK'nın 5. maddesinde yer alan "bir sözleşmenin kurulması veya ifasıyla
+            doğrudan doğruya ilgili olması", "veri sorumlusunun hukuki yükümlülüğünü yerine getirebilmesi
+            için zorunlu olması", "ilgili kişinin temel hak ve özgürlüklerine zarar vermemek kaydıyla veri
+            sorumlusunun meşru menfaati için veri işlenmesinin zorunlu olması" hukuki sebeplerine, Google ile
+            giriş ve yurt dışına aktarım söz konusu olduğunda ise açık rızanıza dayanılarak işlenmektedir.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">5. Kişisel Verilerin Aktarılması</h3>
+          <p>
+            Google ile Giriş özelliği nedeniyle kimlik bilgileriniz Google LLC ile paylaşılır. AI ile
+            adlandırma özelliğini tercih etmeniz halinde, yüklediğiniz belgenin ilgili sayfası ve kendi
+            Gemini API anahtarınız, yalnızca bu işlemi gerçekleştirmek amacıyla doğrudan Google Gemini
+            servislerine iletilir — bu aktarım sizin API anahtarınızla, sizin tercihinizle gerçekleşir ve
+            JETEK sunucusu bu veri akışının arasında yer almaz. Bu aktarımlar, sunucuları yurt dışında
+            bulunan hizmet sağlayıcılara yapıldığından KVKK'nın 9. maddesi kapsamında açık rızanıza
+            dayanmaktadır. Kişisel verileriniz, yukarıda sayılanlar dışında hiçbir üçüncü kişi veya kurumla
+            paylaşılmaz, satılmaz veya pazarlama amacıyla kullanılmaz.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">6. Kişisel Verilerin Saklanma Süresi</h3>
+          <ul class="list-disc list-outside pl-5 flex flex-col gap-1.5">
+            <li>Yüklediğiniz belgeler: geçicidir; işlem/indirme sonrasında ve en geç günlük otomatik
+              temizlik rutini ile (aktif olmayan dosyalar kısa süre içinde, kalanlar günlük tam temizlikle)
+              güvenli silme yöntemiyle kalıcı olarak silinir.</li>
+            <li>Profil bilgileriniz: hesabınız aktif olduğu sürece saklanır; hesap silme talebinizle birlikte
+              silinir.</li>
+            <li>Kullanım/işlem kayıtları: hizmet kalitesinin izlenmesi amacıyla makul bir süre boyunca
+              saklanır, bu sürenin sonunda silinir veya anonim hale getirilir.</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">7. KVKK'nın 11. Maddesi Kapsamındaki Haklarınız</h3>
+          <p class="mb-2">İlgili kişi sıfatıyla KVKK'nın 11. maddesi uyarınca aşağıdaki haklara sahipsiniz:</p>
+          <ul class="list-disc list-outside pl-5 flex flex-col gap-1.5">
+            <li>Kişisel verinizin işlenip işlenmediğini öğrenme,</li>
+            <li>İşlenmişse buna ilişkin bilgi talep etme,</li>
+            <li>İşlenme amacını ve amacına uygun kullanılıp kullanılmadığını öğrenme,</li>
+            <li>Yurt içinde/yurt dışında aktarıldığı üçüncü kişileri bilme,</li>
+            <li>Eksik veya yanlış işlenmişse düzeltilmesini isteme,</li>
+            <li>KVKK'nın 7. maddesindeki şartlar oluştuğunda silinmesini veya yok edilmesini isteme,</li>
+            <li>Düzeltme/silme işlemlerinin, verilerin aktarıldığı üçüncü kişilere bildirilmesini isteme,</li>
+            <li>İşlenen verilerin münhasıran otomatik sistemlerle analiz edilmesi suretiyle aleyhinize bir
+              sonucun ortaya çıkmasına itiraz etme,</li>
+            <li>Kanuna aykırı işleme sebebiyle zarara uğramanız hâlinde zararın giderilmesini talep etme.</li>
+          </ul>
+          <p class="mt-2">
+            Bu haklarınızı kullanmak için taleplerinizi <strong class="text-gray-100">gaziemre71@gmail.com</strong>
+            adresine yazılı olarak iletebilirsiniz.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="h-px bg-gray-800 my-12"></div>
+
+    <!-- ═══════════════════ KULLANIM KOŞULLARI / SORUMLULUK REDDİ ═══════════════════ -->
+    <section id="kosullar" class="scroll-mt-6">
+      <h2 class="text-lg font-bold text-gray-100 mb-1">Kullanım Koşulları ve Sorumluluk Reddi Bildirimi</h2>
+      <p class="text-xs text-gray-500 mb-6">Son güncelleme: 15 Temmuz 2026</p>
+
+      <div class="flex flex-col gap-5 text-sm text-gray-300 leading-relaxed">
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">1. Hizmetin Niteliği</h3>
+          <p>
+            JETEK, PDF/TIFF belgelerinden sayfa ayıklama, yeniden sıralama, döndürme, isteğe bağlı AI
+            destekli otomatik adlandırma ve Word/Excel indeks pusulası üretimini kolaylaştıran bir araçtır.
+            Uygulama "olduğu gibi" ("as-is") sunulmaktadır; kesintisiz veya hatasız çalışacağına dair açık
+            ya da zımni herhangi bir garanti verilmemektedir.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">2. Yüklenen Belgelerden Sorumluluk</h3>
+          <p>
+            Uygulamaya yüklediğiniz belgelerin içeriğinden, hukuka uygunluğundan, doğruluğundan ve bu
+            belgeleri işleme/paylaşma yetkisine sahip olduğunuzdan tamamen siz sorumlusunuz. Resmî, gizli
+            veya kişisel veri içeren belgelerin işlenmesi, kurumunuzun tabi olduğu mevzuata (KVKK dâhil) ve
+            gizlilik politikalarına uygun şekilde yapılmalıdır. Belgeler geçici olarak işlenir ve otomatik
+            olarak silinir; yine de kritik belgelerinizi ayrıca kendi sisteminizde yedeklemeniz önerilir.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">3. AI Tarafından Üretilen İçerik</h3>
+          <p>
+            "Adlandır" özelliği, dosya adı önerilerini Google Gemini modeli aracılığıyla otomatik ve
+            olasılıksal bir şekilde üretir. Bu öneriler hatalı, eksik veya bağlamdan kopuk olabilir.
+            AI tarafından üretilen dosya adlarını ve içerikleri nihai olarak kullanmadan önce doğrulamak
+            sizin sorumluluğunuzdadır; JETEK bu çıktıların doğruluğunu, eksiksizliğini veya belirli bir
+            amaca uygunluğunu garanti etmez.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">4. Üçüncü Taraf Servisler</h3>
+          <p>
+            Uygulama; kimlik doğrulama için Google ile Giriş, isteğe bağlı olarak AI adlandırma için kendi
+            Gemini API anahtarınız ve barındırma/ağ altyapısı için üçüncü taraf servis sağlayıcıları
+            kullanır. Bu servislerin kesintisi, gecikmesi veya hatalı sonuç üretmesinden kaynaklanan
+            zararlardan JETEK sorumlu tutulamaz.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">5. Sorumluluğun Sınırlandırılması</h3>
+          <p>
+            Yürürlükteki mevzuatın izin verdiği azami ölçüde; veri kaybı, iş kesintisi, dolaylı zararlar
+            veya üçüncü taraf servis kaynaklı aksaklıklar dâhil olmak üzere, Uygulamanın kullanımından
+            doğabilecek zararlardan Veri Sorumlusu sorumlu tutulamaz.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">6. Lisans</h3>
+          <p>
+            JETEK'in kaynak kodu GNU AGPL v3.0 lisansı ile sunulmaktadır. Kullanımınız bu lisansın
+            şartlarına tabidir.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="text-gray-100 font-semibold mb-1.5">7. Değişiklikler</h3>
+          <p>
+            Bu Kullanım Koşulları ve Sorumluluk Reddi Bildirimi ile KVKK Aydınlatma Metni önceden bildirim
+            yapılmaksızın güncellenebilir; önemli değişikliklerde sizden yeniden onay istenebilir.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="mt-14">
+      <a href="javascript:history.back()" class="text-xs text-blue-400 hover:underline">&larr; Geri dön</a>
+    </div>
+
+  </div>
+
+</body>
+
+</html>

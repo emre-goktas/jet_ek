@@ -82,6 +82,19 @@
         </select>
       </div>
 
+      {% if needs_consent %}
+      <div class="flex flex-col gap-2.5 border-t border-gray-800 pt-4">
+        <label class="flex items-start gap-2.5 text-xs text-gray-400 cursor-pointer">
+          <input type="checkbox" id="kvkk_consent" required class="mt-0.5 accent-blue-500 shrink-0" />
+          <span><a href="/legal#kvkk" target="_blank" rel="noopener" class="text-blue-400 hover:underline">KVKK Aydınlatma Metni'ni</a> okudum, anladım.</span>
+        </label>
+        <label class="flex items-start gap-2.5 text-xs text-gray-400 cursor-pointer">
+          <input type="checkbox" id="terms_consent" required class="mt-0.5 accent-blue-500 shrink-0" />
+          <span><a href="/legal#kosullar" target="_blank" rel="noopener" class="text-blue-400 hover:underline">Kullanım Koşulları ve Sorumluluk Reddi Bildirimi'ni</a> okudum, kabul ediyorum.</span>
+        </label>
+      </div>
+      {% endif %}
+
       <p id="onboarding-error" class="text-xs text-red-400 hidden"></p>
 
       <div class="flex gap-3 mt-2">
@@ -112,11 +125,17 @@
       errEl.classList.add('hidden');
 
       const form = e.target;
+      const kvkkBox = document.getElementById('kvkk_consent');
+      const termsBox = document.getElementById('terms_consent');
       const body = {
         name: form.name.value,
         title: form.title.value,
         template_id: form.template_id.value,
         il: form.il.value || null,
+        // Checkboxes only render on first consent — an already-consented profile
+        // edit has neither, so there's nothing new to (dis)confirm here.
+        kvkk_consent: kvkkBox ? kvkkBox.checked : true,
+        terms_consent: termsBox ? termsBox.checked : true,
       };
 
       try {

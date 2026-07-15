@@ -175,3 +175,12 @@ async def index(request: Request):
     if db_service.get_profile(user["email"]) is None:
         return RedirectResponse(url="/onboarding")
     return templates.TemplateResponse(request=request, name="index.html", context={"request": request, "user": user})
+
+
+@app.get("/legal")
+async def legal_page(request: Request):
+    """KVKK Aydınlatma Metni + Kullanım Koşulları/Sorumluluk Reddi — public
+    (no auth required) so it's reachable from /login and linked-to before a
+    session exists, and so it stays reviewable after a user has already
+    consented on /onboarding."""
+    return templates.TemplateResponse(request=request, name="legal.html", context={"request": request})
