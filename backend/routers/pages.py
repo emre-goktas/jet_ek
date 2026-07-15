@@ -27,6 +27,12 @@ def get_pdf_source(request: Request, pdf_id: str, current_user: dict = Depends(a
         logger.exception(f"Failed to resolve PDF source for pdf_id={pdf_id}")
         raise HTTPException(status_code=500, detail="Could not load PDF.")
 
-    # Batch Mode Update can rewrite this same pdf_id's bytes in place — no-cache
-    # forces revalidation instead of the browser/pdf.js silently reusing stale content.
-    return FileResponse(path=str(path), media_type="application/pdf", headers={"Cache-Control": "no-cache"})
+    # Batch Mode Update can rewrite this same pdf_id's bytes in place. We need
+    # to prevent caching so the browser re-fetches updated versions.
+    # However, `no-cache` tells Cloudflare to cache but revalidate. When Cloudflare
+    # caches, it ignores `Range` requests from pdf.js and fetches the entire file
+    # from the origin server, causing severe delays for large PDFs.
+    # By using `no-store, max-age=0`, we completely bypass Cloudflare caching,
+    # allowing native Range requests (which FastAPI's FileResponse supports out of the box)
+    # to pass straight through to the backend, enabling fast chunked streaming.
+    return FileResponse(path=str(path), media_type="application/pdf", headers={"Cache-Control": "no-store, max-age=0"})
