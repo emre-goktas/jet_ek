@@ -131,6 +131,19 @@ def save_metadata(file_id: str, metadata: dict, user_dir: Path):
 def save_upload(file_path: Path, original_name: str, user_dir: Path) -> tuple[str, int]:
     """Saves the uploaded PDF file to storage with a unique pdf_id.
 
+    Re-saved (garbage-collected + cleaned) through PyMuPDF rather than moved
+    in as-is: some source PDFs (scanners, older/third-party tools) carry a
+    malformed xref/page-tree that MuPDF silently repairs on open but pdf.js
+    does not — pdf.js instead falls back to indexing every object in the
+    file one HTTP range request at a time, turning ordinary page-scrolling
+    into dozens of slow (or, over a flaky tunnel, outright failing) fetches
+    for a large document. Normalizing every upload here means /pdf-source
+    always serves a structure pdf.js can jump straight into.
+
+    Falls back to storing the raw bytes unchanged if the resave itself fails
+    (e.g. an encrypted PDF) — better to serve a file pdf.js might struggle
+    with than to reject an upload MuPDF was able to open at all.
+
     Returns:
         (pdf_id, page_count)
     """
@@ -138,15 +151,29 @@ def save_upload(file_path: Path, original_name: str, user_dir: Path) -> tuple[st
     pdf_id = uuid.uuid4().hex
     dest = user_dir / f"{pdf_id}_src.pdf"
 
-    shutil.move(str(file_path), str(dest))
+    doc = pymupdf.open(str(file_path))
+    page_count = len(doc)
+    tmp_name = None
+    try:
+        with lock_file(dest):
+            fd, tmp_name = tempfile.mkstemp(dir=user_dir, suffix=".pdf")
+            os.close(fd)
+            try:
+                doc.save(tmp_name, garbage=4, clean=True, deflate=True)
+            finally:
+                doc.close()
+            os.chmod(tmp_name, 0o644)  # match the permissions files normally get, not mkstemp's 0600
+            os.replace(tmp_name, dest)
+    except Exception:
+        logging.warning(f"Clean resave failed for upload {original_name!r}; storing raw bytes instead.", exc_info=True)
+        if not doc.is_closed:
+            doc.close()
+        if tmp_name and os.path.exists(tmp_name):
+            os.remove(tmp_name)
+        shutil.move(str(file_path), str(dest))
+
     _PATH_CACHE[pdf_id] = dest
     save_metadata(pdf_id, {"original_filename": original_name}, user_dir)
-
-    # Get page count
-    with lock_file(dest):
-        doc = pymupdf.open(str(dest))
-        page_count = len(doc)
-        doc.close()
 
     return pdf_id, page_count
 
