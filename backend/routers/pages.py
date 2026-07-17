@@ -15,9 +15,19 @@ router = APIRouter()
 
 
 @router.get("/pdf-source/{pdf_id}")
-@limiter.limit("60/minute")
+@limiter.limit("600/minute")
 def get_pdf_source(request: Request, pdf_id: str, current_user: dict = Depends(auth_service.get_current_user)):
-    """Returns the raw PDF file for pdf_id (original upload or batch output)."""
+    """Returns the raw PDF file for pdf_id (original upload or batch output).
+
+    Rate limit is much higher than other routes here on purpose: pdf.js loads
+    a PDF progressively via HTTP Range requests (see the Cache-Control note
+    below), so ONE document view can legitimately mean many hits against this
+    one route — a large multi-ten-MB source can need hundreds of range
+    requests even at a generous chunk size (see rangeChunkSize in
+    viewer-render.js). Each hit is a cheap byte-range file read, not a write
+    or CPU-bound operation, so a high ceiling here doesn't carry the same
+    risk a route like /extract does.
+    """
     user_dir = pdf_service.user_storage_dir(current_user["email"])
     try:
         path, _, _ = pdf_service.get_pdf_info(pdf_id, user_dir)

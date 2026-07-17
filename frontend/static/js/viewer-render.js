@@ -15,7 +15,14 @@
 
     function getPdfDoc(pdfId) {
       if (!pdfDocCache.has(pdfId)) {
-        const task = pdfjsLib.getDocument({ url: `/pdf-source/${pdfId}` });
+        // rangeChunkSize: pdf.js's default (64KB) means a large source PDF
+        // needs one HTTP Range request per 64KB just to progressively load
+        // it — for a few-hundred-page/multi-ten-MB document that's easily
+        // hundreds of requests, enough to blow through /pdf-source's own
+        // 60/minute limit on its own (seen in practice: an 837-page ~27MB
+        // book hit 429s and left some page thumbnails permanently blank).
+        // 1MB chunks cut that request count by ~16x for the same file.
+        const task = pdfjsLib.getDocument({ url: `/pdf-source/${pdfId}`, rangeChunkSize: 1024 * 1024 });
         // A transient fetch/parse failure must not poison every future attempt —
         // evict so the next getPdfDoc() call actually retries instead of forever
         // reusing this same rejected promise (see renderPageCanvas's retry).

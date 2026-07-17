@@ -295,17 +295,19 @@ def extract_pages(
         filename = "evrak.pdf"
 
     out_path = user_dir / f"{file_id}_{filename}"
-    # garbage=4/clean/deflate: same convention save_upload() already uses.
-    # insert_pdf (in _build_pdf_from_pages) can leave a copied page still
-    # holding a reference to its *source* document's full inherited
-    # Resources/font/xref structure rather than just what that page actually
-    # uses — garbage collection (reachability-based pruning) + clean (resolves
-    # inherited attributes down to concrete per-page values) is what strips
-    # that dead weight back out; without it an extracted page or two can come
-    # out far larger than its actual content, especially from source PDFs
-    # that share resources across pages at the Pages-tree level (common in
-    # office-suite-generated documents) rather than per-page.
-    new_doc.save(str(out_path), garbage=4, clean=True, deflate=True)
+    # garbage=4 (merge duplicate objects) is load-bearing here, confirmed by
+    # direct reproduction: _build_pdf_from_pages calls insert_pdf once PER
+    # PAGE into the same new_doc (not one call for a whole range), and MuPDF
+    # does not dedupe a resource (e.g. a font) shared across pages when it's
+    # pulled in by *separate* insert_pdf calls this way — an N-page batch
+    # from a source where every page shares one font/image ends up embedding
+    # N redundant copies of it (measured: a 252KB/80-page synthetic source
+    # came out 17.7MB, a 70x bloat, with no flags). deflate then compresses
+    # the now-deduplicated result. clean=True was tried too but is NOT
+    # needed for this fix — same output size with or without it, confirmed
+    # by direct comparison — so it's left off to skip its extra content-
+    # stream-rewrite cost.
+    new_doc.save(str(out_path), garbage=4, deflate=True)
     new_doc.close()
     _PATH_CACHE[file_id] = out_path
 
@@ -356,11 +358,13 @@ def build_finalize_zip(items: list[dict], user_dir: Path) -> bytes:
             try:
                 new_doc = _build_pdf_from_pages(pages, user_dir, open_docs=open_docs, stack=stack)
                 try:
-                    # Same garbage=4/clean/deflate reasoning as extract_pages — see
-                    # its comment. Matters even more here: with deflate off, a
-                    # bloated item isn't even masked by outer zip compression
-                    # anymore now that the zip itself is ZIP_STORED.
-                    pdf_bytes = new_doc.tobytes(garbage=4, clean=True, deflate=True)
+                    # Same garbage=4/deflate reasoning as extract_pages — see
+                    # its comment (clean=True confirmed unnecessary for the
+                    # dedup fix, left off). Matters even more here: with
+                    # deflate off, a bloated item isn't even masked by outer
+                    # zip compression anymore now that the zip itself is
+                    # ZIP_STORED.
+                    pdf_bytes = new_doc.tobytes(garbage=4, deflate=True)
                 finally:
                     new_doc.close()
             except Exception:
@@ -414,8 +418,9 @@ def update_pages(file_id: str, pages: list[dict], user_dir: Path) -> int:
             fd, tmp_name = tempfile.mkstemp(dir=user_dir, suffix=".pdf")
             os.close(fd)
             try:
-                # Same garbage=4/clean/deflate reasoning as extract_pages.
-                new_doc.save(tmp_name, garbage=4, clean=True, deflate=True)
+                # Same garbage=4/deflate reasoning as extract_pages (clean=True
+                # confirmed unnecessary for the dedup fix, left off).
+                new_doc.save(tmp_name, garbage=4, deflate=True)
             finally:
                 new_doc.close()
             os.chmod(tmp_name, 0o644)  # match the permissions files normally get, not mkstemp's 0600
