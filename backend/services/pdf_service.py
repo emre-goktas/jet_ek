@@ -295,7 +295,17 @@ def extract_pages(
         filename = "evrak.pdf"
 
     out_path = user_dir / f"{file_id}_{filename}"
-    new_doc.save(str(out_path))
+    # garbage=4/clean/deflate: same convention save_upload() already uses.
+    # insert_pdf (in _build_pdf_from_pages) can leave a copied page still
+    # holding a reference to its *source* document's full inherited
+    # Resources/font/xref structure rather than just what that page actually
+    # uses — garbage collection (reachability-based pruning) + clean (resolves
+    # inherited attributes down to concrete per-page values) is what strips
+    # that dead weight back out; without it an extracted page or two can come
+    # out far larger than its actual content, especially from source PDFs
+    # that share resources across pages at the Pages-tree level (common in
+    # office-suite-generated documents) rather than per-page.
+    new_doc.save(str(out_path), garbage=4, clean=True, deflate=True)
     new_doc.close()
     _PATH_CACHE[file_id] = out_path
 
@@ -346,7 +356,11 @@ def build_finalize_zip(items: list[dict], user_dir: Path) -> bytes:
             try:
                 new_doc = _build_pdf_from_pages(pages, user_dir, open_docs=open_docs, stack=stack)
                 try:
-                    pdf_bytes = new_doc.tobytes()
+                    # Same garbage=4/clean/deflate reasoning as extract_pages — see
+                    # its comment. Matters even more here: with deflate off, a
+                    # bloated item isn't even masked by outer zip compression
+                    # anymore now that the zip itself is ZIP_STORED.
+                    pdf_bytes = new_doc.tobytes(garbage=4, clean=True, deflate=True)
                 finally:
                     new_doc.close()
             except Exception:
@@ -400,7 +414,8 @@ def update_pages(file_id: str, pages: list[dict], user_dir: Path) -> int:
             fd, tmp_name = tempfile.mkstemp(dir=user_dir, suffix=".pdf")
             os.close(fd)
             try:
-                new_doc.save(tmp_name)
+                # Same garbage=4/clean/deflate reasoning as extract_pages.
+                new_doc.save(tmp_name, garbage=4, clean=True, deflate=True)
             finally:
                 new_doc.close()
             os.chmod(tmp_name, 0o644)  # match the permissions files normally get, not mkstemp's 0600
