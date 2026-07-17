@@ -7,7 +7,10 @@ from pathlib import Path
 def preprocess_to_pdf(filepath: Path, original_filename: str) -> tuple[Path, str]:
     """
     Detects the file type via magic bytes.
-    If it is a PDF, verifies its integrity and returns it unchanged.
+    If it is a PDF, returns it unchanged — integrity is verified later, by the
+    one pymupdf.open() save_upload() already has to do anyway (to get the page
+    count and resave with garbage=4/clean/deflate), rather than opening the
+    same file a second time here just to throw the result away.
     If it is a TIFF, converts it to PDF via fitz.
     JPEG/PNG are no longer accepted here: the browser converts those to PDF
     client-side before upload (see frontend/static/js/document-builder.js),
@@ -39,13 +42,7 @@ def preprocess_to_pdf(filepath: Path, original_filename: str) -> tuple[Path, str
     final_filename = f"{base_name}.pdf"
 
     if filetype == "pdf":
-        try:
-            # Parse only to check if it is corrupted
-            with fitz.open(str(filepath)) as doc:
-                pass
-            return filepath, final_filename
-        except Exception:
-            raise ValueError("Corrupted PDF file. Please upload a valid document.")
+        return filepath, final_filename
 
     # TIFF file, convert to pdf
     try:

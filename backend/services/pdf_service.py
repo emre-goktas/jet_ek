@@ -153,7 +153,16 @@ def save_upload(file_path: Path, original_name: str, user_dir: Path) -> tuple[st
     pdf_id = uuid.uuid4().hex
     dest = user_dir / f"{pdf_id}_src.pdf"
 
-    doc = pymupdf.open(str(file_path))
+    # This is the one and only place a PDF upload gets opened/parsed — a
+    # separate "does it even open" check used to run first in
+    # preprocess_to_pdf and get thrown away, opening the same file twice for
+    # no benefit. A failure here still means the same thing it always did
+    # (genuinely corrupted/unparseable content) — re-raised as ValueError so
+    # the route's existing "400, Corrupted PDF file" handling is unchanged.
+    try:
+        doc = pymupdf.open(str(file_path))
+    except Exception:
+        raise ValueError("Corrupted PDF file. Please upload a valid document.")
     page_count = len(doc)
     tmp_name = None
     try:
