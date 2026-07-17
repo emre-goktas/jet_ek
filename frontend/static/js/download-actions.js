@@ -69,17 +69,21 @@
         : (selectedBatchIds.size > 0 ? Array.from(selectedBatchIds) : null);
 
       // /ai/jet-rename-batch needs a real file_id per item — materialize any
-      // still-pending rows in the target set first (or, with no explicit
-      // target, every pending row currently in the list).
+      // still-pending rows in the target set in ONE /extract/batch-split call
+      // (materializeRows, output-panel.js) rather than one /extract call per
+      // row: with dozens/hundreds of pending rows (this app's normal scale),
+      // materializing one at a time was slow and could blow through
+      // /extract's 30/minute limit.
       if (targetIds) {
-        const resolved = [];
-        for (const id of targetIds) {
-          resolved.push(isPendingFileId(id) ? await materializeRow(id) : id);
+        const pendingTargets = targetIds.filter(id => isPendingFileId(id));
+        if (pendingTargets.length > 0) {
+          const materialized = await materializeRows(pendingTargets);
+          targetIds = targetIds.map(id => isPendingFileId(id) ? materialized[id] : id).filter(Boolean);
         }
-        targetIds = resolved.filter(Boolean);
         if (targetIds.length === 0) return;
       } else {
-        for (const id of Object.keys(pendingOutputs)) await materializeRow(id);
+        const pendingIds = Object.keys(pendingOutputs);
+        if (pendingIds.length > 0) await materializeRows(pendingIds);
       }
 
       // Find the relevant download buttons in the list to extract the file IDs

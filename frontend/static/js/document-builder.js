@@ -811,40 +811,56 @@ async function fetchWithRetry(url, attempts = 3) {
 }
 
 /**
- * Cuts every still-pending output row in one request (POST /extract/finalize
- * — see backend/routers/extract.py), then unzips the response so each item's
+ * Cuts every still-pending output row (POST /extract/finalize — see
+ * backend/routers/extract.py), then unzips each response so every item's
  * bytes flow into the exact same stamping/zipping pipeline as an
- * already-materialized file. Returns { entriesByIndex, filenamesByIndex },
- * both keyed by `pending`'s array index — an index missing from either means
- * that item's source vanished server-side (same best-effort semantics as the
- * old batch-split: one bad item never blocks the rest).
+ * already-materialized file. Chunked at MAX_SPLIT_GROUPS (split-mode.js)
+ * since /extract/finalize rejects a request bigger than that — this app's
+ * normal scale is hundreds of pending rows at once, so a single download
+ * click needs to survive going over that in one pass. Returns
+ * { entriesByIndex, filenamesByIndex }, both keyed by `pending`'s array
+ * index — an index missing from either means that item's source vanished
+ * server-side, or its whole chunk failed (same best-effort semantics as
+ * batch-split: one bad item/chunk never blocks the rest).
  */
 async function finalizePendingItems(pending) {
-  const payload = {
-    items: pending.map((f) => ({
-      pages: pendingOutputs[f.file_id].pages,
-      custom_name: pendingOutputs[f.file_id].customName || null,
-    })),
-  };
-
-  const res = await fetch('/extract/finalize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    if (typeof showStatus === 'function') showStatus('✗ Bekleyen belgeler paketlenemedi.', 'text-red-400');
-    return { entriesByIndex: {}, filenamesByIndex: {} };
-  }
-
-  const innerEntries = fflate.unzipSync(new Uint8Array(await res.arrayBuffer()));
   const entriesByIndex = {};
   const filenamesByIndex = {};
-  for (const key of Object.keys(innerEntries)) {
-    const i = parseInt(key.split('_')[0], 10);
-    entriesByIndex[i] = innerEntries[key];
-    filenamesByIndex[i] = key.slice(String(i).length + 1); // server-sanitized — authoritative over the row's provisional display name
+
+  for (let start = 0; start < pending.length; start += MAX_SPLIT_GROUPS) {
+    const chunk = pending.slice(start, start + MAX_SPLIT_GROUPS);
+    const payload = {
+      items: chunk.map((f) => ({
+        pages: pendingOutputs[f.file_id].pages,
+        custom_name: pendingOutputs[f.file_id].customName || null,
+      })),
+    };
+
+    let res;
+    try {
+      res = await fetch('/extract/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      if (typeof showStatus === 'function') showStatus('✗ Bekleyen belgeler paketlenemedi.', 'text-red-400');
+      continue;
+    }
+    if (!res.ok) {
+      if (typeof showStatus === 'function') showStatus('✗ Bekleyen belgeler paketlenemedi.', 'text-red-400');
+      continue;
+    }
+
+    const innerEntries = fflate.unzipSync(new Uint8Array(await res.arrayBuffer()));
+    for (const key of Object.keys(innerEntries)) {
+      const localIndex = parseInt(key.split('_')[0], 10);
+      const globalIndex = start + localIndex;
+      entriesByIndex[globalIndex] = innerEntries[key];
+      filenamesByIndex[globalIndex] = key.slice(String(localIndex).length + 1); // server-sanitized — authoritative over the row's provisional display name
+    }
   }
+
   return { entriesByIndex, filenamesByIndex };
 }
 

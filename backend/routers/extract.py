@@ -77,6 +77,13 @@ MAX_SPLIT_GROUPS = 300
 
 class SplitGroup(BaseModel):
     pages: list[PageExtract]
+    # Set by the frontend's bulk materializeRows() (output-panel.js) when it
+    # already knows the row's name (a pending row picked up its name at
+    # creation time or via an in-session rename) — the caller's name wins
+    # over the auto-generated one below. Left unset, this endpoint's original
+    # split-mode caller gets the exact same '{kaynak}_{ilk}-{son}' auto-name
+    # it always has.
+    custom_name: str | None = None
 
 class BatchSplitRequest(BaseModel):
     groups: list[SplitGroup]
@@ -85,10 +92,14 @@ class BatchSplitRequest(BaseModel):
 @router.post("/extract/batch-split", response_class=JSONResponse)
 @limiter.limit("10/minute")
 def batch_split(req: BatchSplitRequest, request: Request, current_user: dict = Depends(auth_service.get_current_user)):
-    """Extracts each group as its own PDF, named '{kaynak}_{ilk}-{son}.pdf'.
-    Returns {"group-<i>": html} for whichever groups succeeded — a source file
-    vanishing mid-batch (e.g. swept by the idle cleanup) only drops that one
-    group instead of failing the whole request.
+    """Extracts each group as its own PDF. Returns {"group-<i>": html} for
+    whichever groups succeeded — a source file vanishing mid-batch (e.g.
+    swept by the idle cleanup) only drops that one group instead of failing
+    the whole request. Also doubles as the bulk "materialize many still-pending
+    rows in one request" endpoint — see materializeRows() in output-panel.js —
+    since it already does exactly that; only the naming logic below is what
+    lets both callers share it (a caller-supplied custom_name wins, else the
+    original '{kaynak}_{ilk}-{son}' auto-name).
     """
     if not req.groups:
         raise HTTPException(status_code=400, detail="No groups to split.")
@@ -102,12 +113,15 @@ def batch_split(req: BatchSplitRequest, request: Request, current_user: dict = D
         if not group.pages:
             continue
         try:
-            source_pdf_id = group.pages[0].pdf_id
-            _, source_filename, _ = pdf_service.get_pdf_info(source_pdf_id, user_dir)
-            source_stem = Path(source_filename).stem
-            page_numbers = sorted(p.page_idx + 1 for p in group.pages)
-            page_range = str(page_numbers[0]) if page_numbers[0] == page_numbers[-1] else f"{page_numbers[0]}-{page_numbers[-1]}"
-            custom_name = f"{source_stem}_{page_range}"
+            if group.custom_name:
+                custom_name = group.custom_name
+            else:
+                source_pdf_id = group.pages[0].pdf_id
+                _, source_filename, _ = pdf_service.get_pdf_info(source_pdf_id, user_dir)
+                source_stem = Path(source_filename).stem
+                page_numbers = sorted(p.page_idx + 1 for p in group.pages)
+                page_range = str(page_numbers[0]) if page_numbers[0] == page_numbers[-1] else f"{page_numbers[0]}-{page_numbers[-1]}"
+                custom_name = f"{source_stem}_{page_range}"
 
             pages_dicts = [p.model_dump() for p in group.pages]
             file_id, filename, actual_count = pdf_service.extract_pages(pages_dicts, user_dir, custom_name=custom_name)

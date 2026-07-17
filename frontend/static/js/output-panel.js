@@ -202,6 +202,102 @@
       return p;
     }
 
+    // Bulk counterpart to materializeRow — cuts many still-pending rows in
+    // ONE /extract/batch-split call instead of one /extract call per row.
+    // Needed for runJetRenameAll's "AI ile Adlandır" on a whole batch:
+    // materializing rows one at a time was both slow (one round trip per
+    // row) and could blow straight through /extract's 30/minute limit once
+    // a batch got past ~30 rows — this app's whole use case is hundreds of
+    // documents at once (see split-mode.js), so that wasn't a corner case.
+    // Chunked at MAX_SPLIT_GROUPS (split-mode.js) since /extract/batch-split
+    // itself rejects a request bigger than that. Rows already being
+    // materialized by a concurrent materializeRow() call are left alone —
+    // materializeRow's own promise is awaited instead of re-submitting them.
+    // Returns a map of pendingId -> real file_id (or null for any that
+    // failed to resolve — that row is rolled back to its pending display).
+    async function materializeRows(pendingIds) {
+      const results = {};
+      const inFlight = pendingIds.filter(id => materializingPromises[id]);
+      const targets = pendingIds.filter(id => pendingOutputs[id] && !materializingPromises[id]);
+
+      for (const id of inFlight) {
+        results[id] = await materializingPromises[id];
+      }
+
+      for (let start = 0; start < targets.length; start += MAX_SPLIT_GROUPS) {
+        const chunk = targets.slice(start, start + MAX_SPLIT_GROUPS);
+        Object.assign(results, await materializeRowsChunk(chunk));
+      }
+      return results;
+    }
+
+    async function materializeRowsChunk(targets) {
+      const lis = {};
+      targets.forEach(id => {
+        const li = document.querySelector(`.download-btn[data-file-id='${id}']`)?.closest('li');
+        if (!li) return;
+        lis[id] = li;
+        li.id = `loading-task-${id}`;
+        li.innerHTML = loadingRowInnerHtml(pendingDisplayFilename(pendingOutputs[id]));
+      });
+
+      const rollback = () => {
+        const results = {};
+        targets.forEach(id => {
+          const li = lis[id];
+          if (li) { li.removeAttribute('id'); li.innerHTML = pendingItemHtml(id, pendingOutputs[id].pages, pendingOutputs[id].customName); }
+          results[id] = null;
+        });
+        return results;
+      };
+
+      const payload = {
+        groups: targets.map(id => ({
+          pages: pendingOutputs[id].pages,
+          custom_name: pendingOutputs[id].customName || null,
+        })),
+      };
+
+      let res;
+      try {
+        res = await fetch('/extract/batch-split', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (e) {
+        showStatus('✗ Bağlantı hatası.', 'text-red-400');
+        return rollback();
+      }
+
+      if (!res.ok) {
+        showStatus(
+          res.status === 404
+            ? '⏱ Oturumunuz zaman aşımına uğradı — belge temizlendi. Lütfen tekrar yükleyin.'
+            : '✗ Belgeler oluşturulamadı.',
+          res.status === 404 ? 'text-yellow-400' : 'text-red-400'
+        );
+        return rollback();
+      }
+
+      const resultMap = await res.json();
+      const results = {};
+      targets.forEach((id, i) => {
+        const li = lis[id];
+        const html = resultMap[`group-${i}`];
+        if (html && li) {
+          replaceLoadingWithOutput(id, html);
+          delete pendingOutputs[id];
+          selectedBatchIds.delete(id);
+          results[id] = getListItemFileId(li);
+        } else {
+          if (li) { li.removeAttribute('id'); li.innerHTML = pendingItemHtml(id, pendingOutputs[id].pages, pendingOutputs[id].customName); }
+          results[id] = null;
+        }
+      });
+      return results;
+    }
+
     function getListItemFileId(li) {
       return li?.querySelector('[data-file-id]')?.dataset.fileId || null;
     }
