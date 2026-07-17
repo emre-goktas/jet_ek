@@ -795,14 +795,18 @@ async function cleanupDeliveredFiles(fileIds) {
 }
 
 // A transient network-layer hiccup (dropped QUIC stream through a proxy/tunnel,
-// e.g. Cloudflare) makes fetch() reject outright rather than resolve with a bad
-// status — retry a couple of times with backoff before giving up, same idea as
+// e.g. Cloudflare — seen in practice as net::ERR_QUIC_PROTOCOL_ERROR.QUIC_TOO_MANY_RTOS)
+// makes fetch() reject outright rather than resolve with a bad status — retry
+// a couple of times with backoff before giving up, same idea as
 // viewer-render.js's renderPageCanvas retry, so one bad connection blip doesn't
-// fail an entire multi-file ZIP.
-async function fetchWithRetry(url, attempts = 3) {
+// fail an entire multi-file ZIP. options is passed straight through to fetch()
+// (method/headers/body) so POSTs — not just the plain GETs this started
+// out covering — can be retried too; defaults to {} so existing GET callers
+// are unaffected.
+async function fetchWithRetry(url, options = {}, attempts = 3) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
-      return await fetch(url);
+      return await fetch(url, options);
     } catch (e) {
       if (attempt === attempts - 1) throw e;
       await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
@@ -836,9 +840,13 @@ async function finalizePendingItems(pending) {
       })),
     };
 
+    // /extract/finalize does no disk writes (build_finalize_zip is purely
+    // computational — see pdf_service.py), so unlike /extract it's safe to
+    // blindly retry on a transport failure: no risk of a duplicate file, the
+    // retry just recomputes and returns the same bytes.
     let res;
     try {
-      res = await fetch('/extract/finalize', {
+      res = await fetchWithRetry('/extract/finalize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
