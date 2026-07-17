@@ -3,6 +3,7 @@ Extract endpoint — POST /extract
 Extracts the selected page range as a new PDF.
 Response: HTML fragment added to the left panel via HTMX.
 """
+import gzip
 import logging
 import contextlib
 from pathlib import Path
@@ -198,6 +199,20 @@ def finalize_pending(req: FinalizeRequest, request: Request, current_user: dict 
     except Exception:
         logger.exception(f"Finalize failed for request with {len(req.items)} items")
         raise HTTPException(status_code=500, detail="Finalize failed.")
+
+    # Deliberately NOT a global GZipMiddleware: Starlette's GZipMiddleware
+    # doesn't special-case 206 Partial Content, so applying it app-wide would
+    # risk corrupting /pdf-source's Range-request responses (the mechanism
+    # pdf.js's progressive loading depends on — see that route's own
+    # docstring). Gzip is applied here only, by hand, scoped to this one
+    # route. Measured benefit is modest (~9% smaller on a text-heavy
+    # synthetic book — the PDFs inside are already deflate-compressed by
+    # pdf_service, so there's limited further headroom) but free: this
+    # response is never itself Range-requested, and fetch() decompresses
+    # Content-Encoding: gzip transparently, no frontend change needed.
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        zip_bytes = gzip.compress(zip_bytes, compresslevel=6)
+        return Response(content=zip_bytes, media_type="application/zip", headers={"Content-Encoding": "gzip"})
 
     return Response(content=zip_bytes, media_type="application/zip")
 
