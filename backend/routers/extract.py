@@ -4,6 +4,7 @@ Extracts the selected page range as a new PDF.
 Response: HTML fragment added to the left panel via HTMX.
 """
 import logging
+import contextlib
 from pathlib import Path
 # pyrefly: ignore [missing-import]
 import pymupdf
@@ -100,6 +101,13 @@ def batch_split(req: BatchSplitRequest, request: Request, current_user: dict = D
     since it already does exactly that; only the naming logic below is what
     lets both callers share it (a caller-supplied custom_name wins, else the
     original '{kaynak}_{ilk}-{son}' auto-name).
+
+    A single shared open_docs cache + ExitStack spans every group in this
+    request (passed into every extract_pages call below) — groups very
+    commonly share a source (e.g. materializeRows cutting 30 single-page rows
+    out of the same one upload), and without this each group would reopen/
+    reparse that same source PDF from scratch instead of reusing the handle
+    an earlier group in this same request already opened.
     """
     if not req.groups:
         raise HTTPException(status_code=400, detail="No groups to split.")
@@ -109,37 +117,41 @@ def batch_split(req: BatchSplitRequest, request: Request, current_user: dict = D
     user_dir = pdf_service.user_storage_dir(current_user["email"])
     response_htmls = {}
 
-    for i, group in enumerate(req.groups):
-        if not group.pages:
-            continue
-        try:
-            if group.custom_name:
-                custom_name = group.custom_name
-            else:
-                source_pdf_id = group.pages[0].pdf_id
-                _, source_filename, _ = pdf_service.get_pdf_info(source_pdf_id, user_dir)
-                source_stem = Path(source_filename).stem
-                page_numbers = sorted(p.page_idx + 1 for p in group.pages)
-                page_range = str(page_numbers[0]) if page_numbers[0] == page_numbers[-1] else f"{page_numbers[0]}-{page_numbers[-1]}"
-                custom_name = f"{source_stem}_{page_range}"
+    with contextlib.ExitStack() as stack:
+        open_docs: dict = {}
+        for i, group in enumerate(req.groups):
+            if not group.pages:
+                continue
+            try:
+                if group.custom_name:
+                    custom_name = group.custom_name
+                else:
+                    source_pdf_id = group.pages[0].pdf_id
+                    _, source_filename, _ = pdf_service.get_pdf_info(source_pdf_id, user_dir)
+                    source_stem = Path(source_filename).stem
+                    page_numbers = sorted(p.page_idx + 1 for p in group.pages)
+                    page_range = str(page_numbers[0]) if page_numbers[0] == page_numbers[-1] else f"{page_numbers[0]}-{page_numbers[-1]}"
+                    custom_name = f"{source_stem}_{page_range}"
 
-            pages_dicts = [p.model_dump() for p in group.pages]
-            file_id, filename, actual_count = pdf_service.extract_pages(pages_dicts, user_dir, custom_name=custom_name)
-        except Exception:
-            logger.exception(f"Batch split failed for group {i}")
-            continue
+                pages_dicts = [p.model_dump() for p in group.pages]
+                file_id, filename, actual_count = pdf_service.extract_pages(
+                    pages_dicts, user_dir, custom_name=custom_name, open_docs=open_docs, stack=stack
+                )
+            except Exception:
+                logger.exception(f"Batch split failed for group {i}")
+                continue
 
-        label = f"{actual_count} sayfa"
-        context = {
-            "request": request,
-            "file_id": file_id,
-            "filename": filename,
-            "label": label,
-            "page_count": actual_count,
-            "custom_name": custom_name,
-        }
-        template_response = templates.TemplateResponse(request=request, name="partials/pdf_item.html", context=context)
-        response_htmls[f"group-{i}"] = template_response.body.decode("utf-8")
+            label = f"{actual_count} sayfa"
+            context = {
+                "request": request,
+                "file_id": file_id,
+                "filename": filename,
+                "label": label,
+                "page_count": actual_count,
+                "custom_name": custom_name,
+            }
+            template_response = templates.TemplateResponse(request=request, name="partials/pdf_item.html", context=context)
+            response_htmls[f"group-{i}"] = template_response.body.decode("utf-8")
 
     return JSONResponse(content=response_htmls)
 

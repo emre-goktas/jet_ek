@@ -191,7 +191,12 @@ def _src_path(pdf_id: str, user_dir: Path) -> Path:
         raise FileNotFoundError(f"PDF not found: {pdf_id}")
 
 
-def _build_pdf_from_pages(pages: list[dict], user_dir: Path) -> "pymupdf.Document":
+def _build_pdf_from_pages(
+    pages: list[dict],
+    user_dir: Path,
+    open_docs: dict | None = None,
+    stack: contextlib.ExitStack | None = None,
+) -> "pymupdf.Document":
     """Assembles a new in-memory document from an ordered page list, each dict
     shaped {"pdf_id": "id", "page_idx": 0, "rotation": 90}. Every pdf_id is
     resolved within user_dir (see _src_path/_resolve_path) — a page list that
@@ -203,13 +208,25 @@ def _build_pdf_from_pages(pages: list[dict], user_dir: Path) -> "pymupdf.Documen
     skips out-of-range page_idx values with a warning instead of raising.
     Caller validates the pages list (non-empty / size ceiling) and is
     responsible for closing the returned document.
+
+    open_docs/stack: optional shared source-doc cache + its owning ExitStack.
+    Pass these when building MANY documents back-to-back that can share
+    sources (build_finalize_zip, batch_split in extract.py) — a source
+    referenced by several items in the same batch is then opened/parsed only
+    once for the whole batch instead of once per item, since the caller keeps
+    the cache (and the stack that owns closing it) alive across every call.
+    Left as None (the default, single-extraction case — /extract, /update),
+    a private stack scoped to just this one call is used, exactly as before.
     """
     new_doc = pymupdf.open()
 
-    from contextlib import ExitStack
-    open_docs = {}
+    owns_stack = stack is None
+    if open_docs is None:
+        open_docs = {}
+    if owns_stack:
+        stack = contextlib.ExitStack()
 
-    with ExitStack() as stack:
+    try:
         for p in pages:
             pid = p.get("pdf_id")
             idx = p.get("page_idx")
@@ -218,8 +235,7 @@ def _build_pdf_from_pages(pages: list[dict], user_dir: Path) -> "pymupdf.Documen
             if pid not in open_docs:
                 src_path = _src_path(pid, user_dir)
                 stack.enter_context(lock_file(src_path))
-                src_doc = stack.enter_context(pymupdf.open(str(src_path)))
-                open_docs[pid] = src_doc
+                open_docs[pid] = stack.enter_context(pymupdf.open(str(src_path)))
 
             src_doc = open_docs[pid]
             if 0 <= idx < len(src_doc):
@@ -229,11 +245,20 @@ def _build_pdf_from_pages(pages: list[dict], user_dir: Path) -> "pymupdf.Documen
                     page.set_rotation((page.rotation + rot) % 360)
             else:
                 logging.warning(f"_build_pdf_from_pages: skipping out-of-range page_idx={idx} for pdf_id={pid}")
+    finally:
+        if owns_stack:
+            stack.close()
 
     return new_doc
 
 
-def extract_pages(pages: list[dict], user_dir: Path, custom_name: str | None = None) -> tuple[str, str, int]:
+def extract_pages(
+    pages: list[dict],
+    user_dir: Path,
+    custom_name: str | None = None,
+    open_docs: dict | None = None,
+    stack: contextlib.ExitStack | None = None,
+) -> tuple[str, str, int]:
     """Extracts the specified list of pages from potentially multiple PDFs
     and rotates them according to the specified angles.
 
@@ -242,6 +267,11 @@ def extract_pages(pages: list[dict], user_dir: Path, custom_name: str | None = N
         user_dir: the calling user's storage directory (see user_storage_dir) —
             every pdf_id in pages must resolve within it.
         custom_name: Optional custom filename prefix.
+        open_docs/stack: optional shared source-doc cache, passed straight
+            through to _build_pdf_from_pages — see its docstring. Used by
+            batch_split (extract.py) so a source shared by several groups in
+            one batch-split request is opened once for the whole request
+            instead of once per group.
 
     Returns:
         (file_id, filename, actual_page_count)
@@ -252,7 +282,7 @@ def extract_pages(pages: list[dict], user_dir: Path, custom_name: str | None = N
     if len(pages) > 5000:
         raise ValueError("To protect system performance, a maximum of 5000 pages can be extracted at once.")
 
-    new_doc = _build_pdf_from_pages(pages, user_dir)
+    new_doc = _build_pdf_from_pages(pages, user_dir, open_docs=open_docs, stack=stack)
 
     actual_count = len(new_doc)
     file_id = uuid.uuid4().hex
@@ -291,16 +321,30 @@ def build_finalize_zip(items: list[dict], user_dir: Path) -> bytes:
     A single item's source vanishing (or exceeding the same 5000-page ceiling
     extract_pages enforces) only drops that item from the zip — same
     best-effort semantics as batch_split, never aborts the whole request.
+
+    A single shared open_docs cache + ExitStack is used for the WHOLE batch
+    (passed into every _build_pdf_from_pages call below) — items commonly
+    share a source (e.g. 30 single-page pending rows all cut from the same
+    one upload), and without this each item would reopen/reparse that same
+    source PDF from scratch instead of reusing the handle already opened for
+    an earlier item in this same request.
+
+    Stored, not deflated: this zip is never saved by the user directly — the
+    browser unzips it immediately as one step of assembling the real download
+    (see document-builder.js's finalizePendingItems) — and PDF page content
+    is typically already internally Flate-compressed, so re-compressing the
+    outer zip mostly just burns CPU on both ends for little size benefit.
     """
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    with contextlib.ExitStack() as stack, zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        open_docs: dict = {}
         for i, item in enumerate(items):
             pages = item.get("pages") or []
             if not pages or len(pages) > 5000:
                 logging.warning(f"build_finalize_zip: skipping item {i} (empty or over the page limit)")
                 continue
             try:
-                new_doc = _build_pdf_from_pages(pages, user_dir)
+                new_doc = _build_pdf_from_pages(pages, user_dir, open_docs=open_docs, stack=stack)
                 try:
                     pdf_bytes = new_doc.tobytes()
                 finally:
