@@ -41,3 +41,23 @@
     // new one, so a document's final group can span multiple pages.
     let splitClosers = new Set();
 
+    // Output rows that only exist client-side so far — no backend file, no
+    // file_id. Created by confirmExtract/submitSplitGroups instead of an
+    // eager /extract call; only cut server-side once something actually needs
+    // real bytes (materializeRow, see output-panel.js) or the final "İndir"
+    // sends every still-pending row to /extract/finalize in one pass. Keyed
+    // by pendingId, same convention as outputSourcePages/extractedPageIndices
+    // (keyed by "whatever this output's current id is").
+    let pendingOutputs = {};
+    const PENDING_ID_PREFIX = 'pend-';
+
+    function makePendingId() {
+      return PENDING_ID_PREFIX + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    }
+    // A real file_id is always a 32-char hex uuid — this prefix can never
+    // collide with one, so any output-list id can be told apart with just
+    // the string itself, no separate "is this row pending" lookup needed.
+    function isPendingFileId(id) {
+      return typeof id === 'string' && id.startsWith(PENDING_ID_PREFIX);
+    }
+

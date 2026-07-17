@@ -15,15 +15,9 @@
       return div.innerHTML;
     }
 
-    function appendLoadingToOutputList(taskId, filename) {
-      const list = document.getElementById('output-list');
-      const empty = document.getElementById('output-empty');
-      if (empty) empty.remove();
-
-      const wrapper = document.createElement('li');
-      wrapper.id = `loading-task-${taskId}`;
+    function loadingRowInnerHtml(filename) {
       const safeFilename = escapeHtml(filename);
-      wrapper.innerHTML = `
+      return `
         <div class="pdf-item opacity-75 border border-dashed border-gray-800 p-2.5 rounded-lg bg-gray-900/50 flex flex-col gap-2">
           <div class="flex items-start gap-2">
             <svg class="animate-spin w-4 h-4 text-blue-500 shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -40,6 +34,17 @@
           </div>
         </div>
       `;
+    }
+
+    // Places a freshly-built <li> (loading placeholder, pending row, or a
+    // real completed one) into #output-list — while inside Batch Mode, new
+    // rows stack chronologically right under the batch they came from
+    // instead of jumping to the top of the whole list.
+    function insertOutputListWrapper(wrapper) {
+      const list = document.getElementById('output-list');
+      const empty = document.getElementById('output-empty');
+      if (empty) empty.remove();
+
       if (isBatchMode && currentBatchIndex >= 0) {
         const listItems = list.querySelectorAll('li:not(#output-empty)');
         const parentLi = listItems[currentBatchIndex];
@@ -64,6 +69,137 @@
         list.appendChild(wrapper);
       }
       updateBulkDownloadVisibility();
+    }
+
+    function pendingDisplayFilename(pending) {
+      return pending.customName ? `${pending.customName}.pdf` : 'evrak.pdf';
+    }
+
+    // Same DOM shape as the server-rendered partials/pdf_item.html (same
+    // classes, same data-file-id/data-custom-name, same button wiring) so
+    // every existing consumer of an output-list row — the checkbox, rename
+    // button, delete button, batch context menu, gatherOutputFilesData —
+    // works on a pending row completely unmodified. pendingId doubles as
+    // data-file-id; isPendingFileId() is what tells the two apart anywhere
+    // a real backend call is about to be made from one.
+    function pendingItemHtml(pendingId, pages, customName) {
+      const filename = pendingDisplayFilename({ customName });
+      const safeFilename = escapeHtml(filename);
+      const safeCustomName = escapeHtml(customName || '');
+      const pageCount = pages.length;
+      return `
+        <div class="pdf-item pdf-item-pending" data-file-id="${pendingId}" oncontextmenu="openBatchContextMenu(event, this)">
+          <div class="output-select-checkbox-wrap">
+            <input type="checkbox" class="output-select-checkbox" onclick="event.stopPropagation(); toggleOutputSelection(this, '${pendingId}')" title="Bu belgeyi seç">
+          </div>
+          <div class="flex items-start gap-2">
+            <svg class="w-4 h-4 text-amber-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+            </svg>
+            <div class="flex-1 min-w-0">
+              <p class="text-xs font-medium text-gray-200 truncate" title="${safeFilename}">${safeFilename}</p>
+              <p class="text-xs text-amber-500 mt-0.5">${pageCount} sayfa · Bekliyor</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 mt-2">
+            <button
+              data-file-id="${pendingId}"
+              data-custom-name="${safeCustomName}"
+              onclick="downloadSingleFile('${pendingId}', this)"
+              class="download-btn flex-1 text-center"
+            >
+              ↓ İndir
+            </button>
+            <button
+              onclick="openRenameModal('${pendingId}', '${safeCustomName || safeFilename}', ${pageCount})"
+              class="rename-btn p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+              data-file-id="${pendingId}"
+              data-page-count="${pageCount}"
+              title="Yeniden adlandır"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+              </svg>
+            </button>
+            <button
+              onclick="removeOutputItem(this)"
+              class="p-2 text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+              title="Sil"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function addPendingRowToOutputList(pendingId) {
+      const pending = pendingOutputs[pendingId];
+      if (!pending) return;
+      const wrapper = document.createElement('li');
+      wrapper.innerHTML = pendingItemHtml(pendingId, pending.pages, pending.customName);
+      insertOutputListWrapper(wrapper);
+    }
+
+    // Updates a pending row's displayed name in place after a rename — mirrors
+    // how a materialized row's rename swaps in fresh server HTML (submitRename
+    // in rename-modal.js), just rendered client-side since there's nothing to
+    // ask the server for yet.
+    function updatePendingRowDisplay(pendingId) {
+      const pending = pendingOutputs[pendingId];
+      if (!pending) return;
+      const li = document.querySelector(`.download-btn[data-file-id='${pendingId}']`)?.closest('li');
+      if (!li) return;
+      li.innerHTML = pendingItemHtml(pendingId, pending.pages, pending.customName);
+    }
+
+    // Cuts a pending row into a real backend file on demand — the moment
+    // something needs actual bytes server-side (opening it in Grup
+    // Düzenleyici, a single-item "İndir", AI ile yeniden adlandır), instead
+    // of waiting for the bulk "İndir" finalize pass. Every other still-pending
+    // row is left untouched. In-flight de-duped per pendingId so a double
+    // click (or two different trigger points racing on the same row) can't
+    // fire two /extract calls — and thus create two orphaned real files — for
+    // one logical row. Resolves to the new real file_id, or null on failure
+    // (postAction() already surfaced a status message in that case).
+    let materializingPromises = {};
+
+    function materializeRow(pendingId) {
+      const pending = pendingOutputs[pendingId];
+      if (!pending) return Promise.resolve(null);
+      if (materializingPromises[pendingId]) return materializingPromises[pendingId];
+
+      const p = (async () => {
+        const li = document.querySelector(`.download-btn[data-file-id='${pendingId}']`)?.closest('li');
+        if (!li) return null;
+
+        li.id = `loading-task-${pendingId}`;
+        li.innerHTML = loadingRowInnerHtml(pendingDisplayFilename(pending));
+
+        const res = await postAction('/extract', {
+          pages: pending.pages,
+          custom_name: pending.customName || null
+        });
+
+        if (!res) {
+          li.removeAttribute('id');
+          li.innerHTML = pendingItemHtml(pendingId, pending.pages, pending.customName);
+          return null;
+        }
+
+        replaceLoadingWithOutput(pendingId, res);
+        delete pendingOutputs[pendingId];
+        selectedBatchIds.delete(pendingId); // fresh HTML has no notion of "was selected", mirrors runJetRenameAll's own cleanup
+        return getListItemFileId(li);
+      })();
+
+      materializingPromises[pendingId] = p;
+      p.finally(() => { delete materializingPromises[pendingId]; });
+      return p;
     }
 
     function getListItemFileId(li) {
@@ -164,10 +300,16 @@
       restoreExtractedPages(fileId);
       li.remove();
       selectedBatchIds.delete(fileId);
+      delete pendingOutputs[fileId]; // no-op for a real fileId — this is what makes "Sil" on a never-materialized row completely free (no backend call ever happened)
       updateBulkDownloadVisibility();
       refreshBatchNavStatus();
     }
 
+    // Adds the current selection to the output list as a pending row — pure
+    // client-side metadata, no backend call. The actual cut happens later,
+    // either on demand (materializeRow, if the user opens this row in Grup
+    // Düzenleyici / downloads it alone / AI-renames it) or all at once when
+    // "İndir" sends every still-pending row to /extract/finalize in one pass.
     async function confirmExtract() {
       if (selectedPages.size === 0) return;
 
@@ -190,37 +332,15 @@
           return;
       }
 
-      // Generate temporary display filename
-      let displayFilename = '';
-      if (currentCustomName) {
-        displayFilename = `${currentCustomName}.pdf`;
-      } else {
-        displayFilename = `evrak.pdf`;
-      }
+      const pendingId = makePendingId();
+      pendingOutputs[pendingId] = { pendingId, pages: extractionList, customName: currentCustomName || '' };
 
-      // Generate a temp UI ID for tracking until response
-      const tempUiId = 'temp-' + Math.random().toString(36).substring(2, 9);
-      appendLoadingToOutputList(tempUiId, displayFilename);
-      markPagesExtracted(extractedCardEls, tempUiId);
+      addPendingRowToOutputList(pendingId);
+      markPagesExtracted(extractedCardEls, pendingId);
       clearSelection();
 
-      const res = await postAction('/extract', {
-        pages: extractionList,
-        custom_name: currentCustomName
-      });
-
-      if (res) {
-        replaceLoadingWithOutput(tempUiId, res);
-        if (typeof logEvent === 'function') logEvent('extract', { page_count: extractionList.length });
-        await persistBatchExtractionCut(extractedCardEls); // no-op unless currently viewing a batch in Batch Mode
-      } else {
-        const loader = document.getElementById(`loading-task-${tempUiId}`);
-        if (loader) loader.remove();
-        restoreExtractedPages(tempUiId); // extraction failed server-side, undo the optimistic hide
-        updateBulkDownloadVisibility();
-        // postAction() already showed a status message (timeout-specific for
-        // a 404, generic otherwise) — nothing more to show here.
-      }
+      if (typeof logEvent === 'function') logEvent('extract', { page_count: extractionList.length });
+      await persistBatchExtractionCut(extractedCardEls); // no-op unless currently viewing a batch in Batch Mode — still a real server cut of the parent batch, independent of the new child row being pending
     }
 
 

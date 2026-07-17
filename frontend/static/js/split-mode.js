@@ -3,9 +3,12 @@
  * "Kurallı Böl" (right-click, fixed N-page chunks) and "Hızlı Ayıkla"
  * (toolbar toggle, click anchors to mark group starts) — both compute an
  * ordered list of page-groups client-side, never letting a group cross a
- * source document's boundary, then POST them all in one call to
- * /extract/batch-split so splitting hundreds of pages doesn't mean hundreds
- * of round trips.
+ * source document's boundary, then add them all to the output list as
+ * pending rows (see submitSplitGroups) — no backend call at grouping time.
+ * The backend's /extract/batch-split endpoint this used to POST to is still
+ * there, just no longer called from here; real cutting now happens on
+ * demand or, for whatever's still pending, in one /extract/finalize pass at
+ * download time (see document-builder.js's buildAndDownloadZip).
  */
 
     const MAX_SPLIT_GROUPS = 300;
@@ -336,74 +339,47 @@
 
     // ─── Shared submit path ────────────────────────────────────────────────
 
+    // Mirrors the backend's own {kaynak}_{ilk}-{son} naming convention
+    // (extract.py's batch_split) by reading the source filename straight out
+    // of the already-rendered document header instead of a round trip —
+    // groups never cross a source document's boundary, so cards[0]'s pdf_id
+    // is always that group's one true source.
+    function getSourceStem(pdfId) {
+      const span = document.querySelector(`.document-separator[data-pdf-id="${pdfId}"] span.font-medium`);
+      return (span?.textContent?.trim() || 'evrak').replace(/\.pdf$/i, '');
+    }
+
+    // Adds every computed group to the output list as a pending row — pure
+    // client-side metadata, no backend call (see confirmExtract in
+    // output-panel.js for the same pattern on the single-extract path). Real
+    // cutting happens later, on demand or at the final "İndir".
     async function submitSplitGroups(groups, eventName) {
       if (groups.length === 0) return;
 
-      const tempEntries = groups.map(cards => {
-        const tempId = 'split-' + Math.random().toString(36).substring(2, 9);
+      const allExtractedCards = [];
+
+      groups.forEach(cards => {
+        const pendingId = makePendingId();
+        const pdfId = cards[0].dataset.pdfId;
         const firstPage = parseInt(cards[0].dataset.pageIndex) + 1;
         const lastPage = parseInt(cards[cards.length - 1].dataset.pageIndex) + 1;
-        const label = firstPage === lastPage ? `${firstPage}` : `${firstPage}-${lastPage}`;
-        appendLoadingToOutputList(tempId, `evrak_${label}.pdf`);
-        return { tempId, cards };
+        const range = firstPage === lastPage ? `${firstPage}` : `${firstPage}-${lastPage}`;
+        const customName = `${getSourceStem(pdfId)}_${range}`;
+
+        const pages = cards.map(card => ({
+          pdf_id: card.dataset.pdfId,
+          page_idx: parseInt(card.dataset.pageIndex),
+          rotation: pageRotations[card.id] || 0,
+        }));
+
+        pendingOutputs[pendingId] = { pendingId, pages, customName };
+        addPendingRowToOutputList(pendingId);
+        markPagesExtracted(cards, pendingId);
+        allExtractedCards.push(...cards);
       });
 
-      const payload = {
-        groups: groups.map(cards => ({
-          pages: cards.map(card => ({
-            pdf_id: card.dataset.pdfId,
-            page_idx: parseInt(card.dataset.pageIndex),
-            rotation: pageRotations[card.id] || 0,
-          })),
-        })),
-      };
-
-      let res;
-      try {
-        res = await fetch('/extract/batch-split', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch (e) {
-        tempEntries.forEach(({ tempId }) => document.getElementById(`loading-task-${tempId}`)?.remove());
-        showStatus('✗ Bağlantı hatası.', 'text-red-400');
-        return;
-      }
-
-      if (!res.ok) {
-        tempEntries.forEach(({ tempId }) => document.getElementById(`loading-task-${tempId}`)?.remove());
-        showStatus(
-          res.status === 404
-            ? '⏱ Oturumunuz zaman aşımına uğradı — belge temizlendi. Lütfen tekrar yükleyin.'
-            : '✗ Bölme başarısız oldu.',
-          res.status === 404 ? 'text-yellow-400' : 'text-red-400'
-        );
-        return;
-      }
-
-      const resultMap = await res.json();
-      const allExtractedCards = [];
-      let successCount = 0;
-
-      tempEntries.forEach(({ tempId, cards }, i) => {
-        const html = resultMap[`group-${i}`];
-        if (html) {
-          markPagesExtracted(cards, tempId);
-          replaceLoadingWithOutput(tempId, html);
-          allExtractedCards.push(...cards);
-          successCount++;
-        } else {
-          document.getElementById(`loading-task-${tempId}`)?.remove();
-        }
-      });
-
-      if (typeof logEvent === 'function') logEvent(eventName, { group_count: groups.length, success_count: successCount });
+      if (typeof logEvent === 'function') logEvent(eventName, { group_count: groups.length, success_count: groups.length });
       if (allExtractedCards.length > 0) await persistBatchExtractionCut(allExtractedCards);
 
-      if (successCount === groups.length) {
-        showStatus(`✓ ${successCount} parça oluşturuldu.`, 'text-green-400');
-      } else {
-        showStatus(`⚠ ${successCount}/${groups.length} parça oluşturuldu.`, 'text-yellow-400');
-      }
+      showStatus(`✓ ${groups.length} parça oluşturuldu.`, 'text-green-400');
     }

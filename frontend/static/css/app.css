@@ -407,6 +407,14 @@
   background: rgba(59, 130, 246, 0.1);
 }
 
+/* Not yet cut server-side — pure client-side metadata until something
+   materializes it (Grup Düzenleyici, tekil İndir, AI ile adlandır) or the
+   final "İndir" finalizes every remaining pending row in one pass. */
+.pdf-item.pdf-item-pending {
+  border-style: dashed;
+  border-color: #92400e; /* amber-800 */
+}
+
 .output-select-checkbox-wrap {
   position: absolute;
   top: 6px;

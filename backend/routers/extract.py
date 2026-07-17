@@ -9,7 +9,7 @@ from pathlib import Path
 import pymupdf
 # pyrefly: ignore [missing-import]
 from fastapi import APIRouter, HTTPException, Request, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 # pyrefly: ignore [missing-import]
 from pydantic import BaseModel
 
@@ -128,6 +128,52 @@ def batch_split(req: BatchSplitRequest, request: Request, current_user: dict = D
         response_htmls[f"group-{i}"] = template_response.body.decode("utf-8")
 
     return JSONResponse(content=response_htmls)
+
+
+# ─── Finalize (lazy extraction — "download" pass) ─────────────────────────
+# The output list only ever tracks pending rows client-side (source pdf_id +
+# page ranges + custom name, no backend call) until "İndir" is clicked — see
+# frontend/static/js/viewer-state.js's pendingOutputs. This endpoint is what
+# that final click hits: one request that cuts every still-pending row AND
+# zips them, instead of one /extract call per row. A row that was already
+# materialized on demand (opened in Grup Düzenleyici, singly downloaded, or
+# AI-renamed before the bulk download) skips this path entirely — the
+# frontend fetches it via the existing /pdf-source/{id}.
+
+class FinalizeItem(BaseModel):
+    pages: list[PageExtract]
+    custom_name: str | None = None
+
+class FinalizeRequest(BaseModel):
+    items: list[FinalizeItem]
+
+
+@router.post("/extract/finalize")
+@limiter.limit("5/minute")
+def finalize_pending(req: FinalizeRequest, request: Request, current_user: dict = Depends(auth_service.get_current_user)):
+    """One-shot bulk cut for output rows that were only ever tracked
+    client-side — see the module note above. Unlike /extract and
+    /extract/batch-split, nothing is written to user_dir; the response is a
+    ZIP of the cut PDFs (entries named "{i}_{filename}", i = the item's
+    position in the request) that the browser unzips immediately as part of
+    assembling the real download, never something a user saves directly. A
+    source file that's vanished for one item only drops that item's entry
+    from the zip — same best-effort semantics as batch_split.
+    """
+    if not req.items:
+        raise HTTPException(status_code=400, detail="No items to finalize.")
+    if len(req.items) > MAX_SPLIT_GROUPS:
+        raise HTTPException(status_code=400, detail=f"Tek seferde en fazla {MAX_SPLIT_GROUPS} parça sonlandırılabilir.")
+
+    user_dir = pdf_service.user_storage_dir(current_user["email"])
+    items_dicts = [{"pages": [p.model_dump() for p in it.pages], "custom_name": it.custom_name} for it in req.items]
+    try:
+        zip_bytes = pdf_service.build_finalize_zip(items_dicts, user_dir)
+    except Exception:
+        logger.exception(f"Finalize failed for request with {len(req.items)} items")
+        raise HTTPException(status_code=500, detail="Finalize failed.")
+
+    return Response(content=zip_bytes, media_type="application/zip")
 
 
 class RenameRequest(BaseModel):

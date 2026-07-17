@@ -7,9 +7,11 @@ PDF processing service — using PyMuPDF (pymupdf):
 """
 import os
 import re
+import io
 import uuid
 import json
 import time
+import zipfile
 import hashlib
 import tempfile
 import threading
@@ -268,6 +270,54 @@ def extract_pages(pages: list[dict], user_dir: Path, custom_name: str | None = N
     _PATH_CACHE[file_id] = out_path
 
     return file_id, filename, actual_count
+
+
+def build_finalize_zip(items: list[dict], user_dir: Path) -> bytes:
+    """Bulk, disk-free counterpart to extract_pages(): cuts every item's pages
+    into an in-memory PDF (via _build_pdf_from_pages, which never touches disk)
+    and packs every successfully-cut item into one ZIP, entirely in memory —
+    no per-item file is ever written to user_dir, unlike extract_pages/batch_split.
+    Lets a whole "select N ranges, then Download" workflow finish in one
+    request instead of one /extract call per pending row.
+
+    items: [{"pages": [...], "custom_name": "..."|None}, ...], in caller's order.
+
+    Each zip entry is named "{i}_{filename}", i being the item's 0-based
+    position in `items` and filename computed with extract_pages' exact same
+    convention (sanitize_filename(custom_name)+'.pdf', or 'evrak.pdf') — so the
+    caller recovers both "which request item" and its real, sanitized filename
+    just by parsing entry names, no separate manifest needed.
+
+    A single item's source vanishing (or exceeding the same 5000-page ceiling
+    extract_pages enforces) only drops that item from the zip — same
+    best-effort semantics as batch_split, never aborts the whole request.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, item in enumerate(items):
+            pages = item.get("pages") or []
+            if not pages or len(pages) > 5000:
+                logging.warning(f"build_finalize_zip: skipping item {i} (empty or over the page limit)")
+                continue
+            try:
+                new_doc = _build_pdf_from_pages(pages, user_dir)
+                try:
+                    pdf_bytes = new_doc.tobytes()
+                finally:
+                    new_doc.close()
+            except Exception:
+                logging.warning(f"build_finalize_zip: skipping item {i}", exc_info=True)
+                continue
+
+            custom_name = item.get("custom_name")
+            if custom_name:
+                filename = f"{security.sanitize_filename(custom_name)}.pdf"
+            else:
+                filename = "evrak.pdf"
+
+            zf.writestr(f"{i}_{filename}", pdf_bytes)
+
+    return buf.getvalue()
 
 
 def update_pages(file_id: str, pages: list[dict], user_dir: Path) -> int:

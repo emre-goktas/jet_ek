@@ -32,7 +32,11 @@
             const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
             if (listItems.length > 0) {
                 currentBatchIndex = 0;
-                loadBatch(currentBatchIndex);
+                // loadBatch can fail (e.g. a still-pending row's materialize call
+                // fails) — nothing valid to fall back to on the very first entry,
+                // so revert out of Batch Mode the same way the "no batches" case
+                // above already does.
+                loadBatch(currentBatchIndex).then(ok => { if (!ok) toggleBatchMode(); });
             } else {
                 showStatus('Önizlenecek grup yok', 'text-yellow-400');
                 toggleBatchMode(); // revert
@@ -67,38 +71,56 @@
     function prevBatch() {
         const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
         if (listItems.length === 0) return;
+        const prevIndex = currentBatchIndex;
         currentBatchIndex--;
         if (currentBatchIndex < 0) currentBatchIndex = listItems.length - 1;
-        loadBatch(currentBatchIndex);
+        loadBatch(currentBatchIndex).then(ok => { if (!ok) currentBatchIndex = prevIndex; });
     }
 
     function nextBatch() {
         const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
         if (listItems.length === 0) return;
+        const prevIndex = currentBatchIndex;
         currentBatchIndex++;
         if (currentBatchIndex >= listItems.length) currentBatchIndex = 0;
-        loadBatch(currentBatchIndex);
+        loadBatch(currentBatchIndex).then(ok => { if (!ok) currentBatchIndex = prevIndex; });
     }
 
-    function loadBatch(index) {
-        const listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
-        if (index < 0 || index >= listItems.length) return;
-        
-        const fileId = listItems[index].dataset.fileId;
+    // Grup Düzenleyici only ever views a real backend file — a still-pending
+    // row (see viewer-state.js's pendingOutputs) is materialized on demand
+    // right here before /batch_viewer is ever called. Returns whether a batch
+    // was actually loaded, so callers can revert/restore their own index on
+    // failure instead of being left pointed at a batch that never rendered.
+    async function loadBatch(index) {
+        let listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn');
+        if (index < 0 || index >= listItems.length) return false;
+
+        let fileId = listItems[index].dataset.fileId;
+        if (isPendingFileId(fileId)) {
+            const realId = await materializeRow(fileId);
+            if (!realId) {
+                showStatus('✗ Grup açılamadı — sayfalar oluşturulamadı.', 'text-red-400');
+                return false;
+            }
+            listItems = document.querySelectorAll('#output-list li:not(#output-empty) .download-btn'); // materializeRow only swapped this row's innerHTML in place — same positions, fresh element
+            fileId = listItems[index].dataset.fileId;
+        }
+
         const filenameEl = listItems[index].closest('li').querySelector('p.truncate');
         const filename = filenameEl ? filenameEl.textContent : 'Grup';
-        
+
         document.getElementById('batch-nav-status').textContent = `${index + 1} / ${listItems.length}`;
         document.getElementById('batch-name-input').value = filename.replace(/\.pdf$/i, '');
-        
+
         // Highlight active batch in left panel
         document.querySelectorAll('#output-list li').forEach(li => li.classList.remove('batch-active'));
         listItems[index].closest('li').classList.add('batch-active');
-        
+
         fetchAndRenderBatch(fileId, filename);
-        
+
         // Auto focus input when switching batches
         setTimeout(() => document.getElementById('batch-name-input').focus(), 50);
+        return true;
     }
 
     // Keeps currentBatchIndex and the "X / Y" nav counter correct after the output list

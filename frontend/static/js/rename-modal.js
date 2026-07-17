@@ -145,10 +145,13 @@
     function loadRenameModalContent(fileId, currentName, pageCount) {
       renamingFileId = fileId;
 
-      batchPreviewItems = [];
-      for (let i = 0; i < pageCount; i++) {
-        batchPreviewItems.push({ pdfId: fileId, pageIndex: i, rotation: 0 });
-      }
+      // A pending row's pages are always real, already-uploaded source pages —
+      // only the output itself doesn't exist yet — so its preview can render
+      // straight from each page's own pdf_id/page_idx, no materialization needed.
+      const pending = pendingOutputs[fileId];
+      batchPreviewItems = pending
+        ? pending.pages.map(p => ({ pdfId: p.pdf_id, pageIndex: p.page_idx, rotation: p.rotation || 0 }))
+        : Array.from({ length: pageCount }, (_, i) => ({ pdfId: fileId, pageIndex: i, rotation: 0 }));
       currentBatchPreviewIndex = 0;
       updateBatchPreviewUI();
 
@@ -201,6 +204,17 @@
     }
 
     async function submitRename(fileId, newName) {
+      if (isPendingFileId(fileId)) {
+        // Nothing to persist server-side yet — just update the client-side
+        // record and redraw the row, same shape as the real-file branch below
+        // (li.innerHTML swapped for a fresh render) but with no backend call.
+        const pending = pendingOutputs[fileId];
+        if (!pending) return;
+        pending.customName = newName;
+        updatePendingRowDisplay(fileId);
+        return;
+      }
+
       const res = await postAction('/rename/' + fileId, { custom_name: newName });
       if (res) {
         const link = document.querySelector(`.download-btn[data-file-id='${fileId}']`);

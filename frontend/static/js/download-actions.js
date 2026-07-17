@@ -64,9 +64,23 @@
         return;
       }
 
-      const targetIds = (explicitFileIds && explicitFileIds.length > 0)
+      let targetIds = (explicitFileIds && explicitFileIds.length > 0)
         ? explicitFileIds
         : (selectedBatchIds.size > 0 ? Array.from(selectedBatchIds) : null);
+
+      // /ai/jet-rename-batch needs a real file_id per item — materialize any
+      // still-pending rows in the target set first (or, with no explicit
+      // target, every pending row currently in the list).
+      if (targetIds) {
+        const resolved = [];
+        for (const id of targetIds) {
+          resolved.push(isPendingFileId(id) ? await materializeRow(id) : id);
+        }
+        targetIds = resolved.filter(Boolean);
+        if (targetIds.length === 0) return;
+      } else {
+        for (const id of Object.keys(pendingOutputs)) await materializeRow(id);
+      }
 
       // Find the relevant download buttons in the list to extract the file IDs
       const downloadBtns = Array.from(document.querySelectorAll('#output-list .download-btn'))
@@ -164,6 +178,14 @@
     // completion signal to hang the post-delivery /cleanup call off of —
     // see cleanupDeliveredFiles() in document-builder.js.
     async function downloadSingleFile(fileId, btn) {
+      if (isPendingFileId(fileId)) {
+        const realId = await materializeRow(fileId);
+        if (!realId) return; // materializeRow/postAction already showed a status message
+        fileId = realId;
+        btn = document.querySelector(`.download-btn[data-file-id='${realId}']`); // the row's innerHTML was just replaced
+        if (!btn) return;
+      }
+
       const listItems = Array.from(document.querySelectorAll('#output-list li'));
       const li = btn.closest('li');
       let count = 0;

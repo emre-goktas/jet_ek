@@ -811,9 +811,49 @@ async function fetchWithRetry(url, attempts = 3) {
 }
 
 /**
+ * Cuts every still-pending output row in one request (POST /extract/finalize
+ * — see backend/routers/extract.py), then unzips the response so each item's
+ * bytes flow into the exact same stamping/zipping pipeline as an
+ * already-materialized file. Returns { entriesByIndex, filenamesByIndex },
+ * both keyed by `pending`'s array index — an index missing from either means
+ * that item's source vanished server-side (same best-effort semantics as the
+ * old batch-split: one bad item never blocks the rest).
+ */
+async function finalizePendingItems(pending) {
+  const payload = {
+    items: pending.map((f) => ({
+      pages: pendingOutputs[f.file_id].pages,
+      custom_name: pendingOutputs[f.file_id].customName || null,
+    })),
+  };
+
+  const res = await fetch('/extract/finalize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    if (typeof showStatus === 'function') showStatus('✗ Bekleyen belgeler paketlenemedi.', 'text-red-400');
+    return { entriesByIndex: {}, filenamesByIndex: {} };
+  }
+
+  const innerEntries = fflate.unzipSync(new Uint8Array(await res.arrayBuffer()));
+  const entriesByIndex = {};
+  const filenamesByIndex = {};
+  for (const key of Object.keys(innerEntries)) {
+    const i = parseInt(key.split('_')[0], 10);
+    entriesByIndex[i] = innerEntries[key];
+    filenamesByIndex[i] = key.slice(String(i).length + 1); // server-sanitized — authoritative over the row's provisional display name
+  }
+  return { entriesByIndex, filenamesByIndex };
+}
+
+/**
  * Replaces GET /download-zip and /download-zip-numbered: fetches each
- * output's PDF bytes from /pdf-source/{id}, optionally stamps EK numbers,
- * builds the Word index, and packages everything into one ZIP client-side.
+ * already-materialized output's PDF bytes from /pdf-source/{id}, cuts every
+ * still-pending row in one /extract/finalize pass, optionally stamps EK
+ * numbers, builds the Word index, and packages everything into one ZIP
+ * client-side.
  */
 async function buildAndDownloadZip(numbered, fileIdFilter) {
   const filesData = gatherOutputFilesData(fileIdFilter);
@@ -825,8 +865,10 @@ async function buildAndDownloadZip(numbered, fileIdFilter) {
 
   try {
     const zipEntries = {};
+    const materialized = filesData.filter((f) => !isPendingFileId(f.file_id));
+    const pending = filesData.filter((f) => isPendingFileId(f.file_id));
 
-    for (const f of filesData) {
+    for (const f of materialized) {
       const res = await fetchWithRetry(`/pdf-source/${encodeURIComponent(f.file_id)}`);
       if (!res.ok) continue; // matches backend's "skip files that fail to resolve"
       let pdfBytes = new Uint8Array(await res.arrayBuffer());
@@ -843,6 +885,27 @@ async function buildAndDownloadZip(numbered, fileIdFilter) {
       zipEntries[zipFilename] = pdfBytes;
     }
 
+    const finalizedPendingIds = [];
+    if (pending.length > 0) {
+      const { entriesByIndex, filenamesByIndex } = await finalizePendingItems(pending);
+      for (let i = 0; i < pending.length; i++) {
+        let pdfBytes = entriesByIndex[i];
+        if (!pdfBytes) continue; // that item's source vanished server-side; leave its pending row untouched, don't mark it delivered
+        if (numbered) {
+          try {
+            pdfBytes = await stampEkNumbers(pdfBytes, pending[i].ek_no);
+          } catch (e) {
+            console.error(`Failed to stamp PDF ${filenamesByIndex[i]}:`, e);
+          }
+        }
+        finalizedPendingIds.push(pending[i].file_id);
+        zipEntries[ekPrefixedFilename(pending[i].ek_no, filenamesByIndex[i])] = pdfBytes;
+      }
+      if (finalizedPendingIds.length < pending.length && typeof showStatus === 'function') {
+        showStatus(`⚠ ${pending.length - finalizedPendingIds.length} belge paketlenemedi — kaynak bulunamadı.`, 'text-yellow-400');
+      }
+    }
+
     try {
       const { bytes, extension } = await buildDocxIndex(filesData);
       zipEntries[`Ek Belgeler Listesi.${extension}`] = new Uint8Array(bytes);
@@ -856,7 +919,7 @@ async function buildAndDownloadZip(numbered, fileIdFilter) {
     triggerBlobDownload(blob, 'jetek_files.zip');
     if (typeof showStatus === 'function') showStatus('✓ İndirme hazır.', 'text-green-400');
     logEvent('download_zip', { file_count: filesData.length, numbered, total_pages: filesData.reduce((s, f) => s + (f.page_count || 0), 0) });
-    await cleanupDeliveredFiles(filesData.map((f) => f.file_id));
+    await cleanupDeliveredFiles(materialized.map((f) => f.file_id).concat(finalizedPendingIds));
   } catch (e) {
     console.error('ZIP packaging failed:', e);
     if (typeof showStatus === 'function') showStatus('✗ Paketleme sırasında hata oluştu.', 'text-red-400');
