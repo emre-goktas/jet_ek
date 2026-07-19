@@ -59,9 +59,13 @@ async def auth_google(req: GoogleAuthRequest, request: Request, response: Respon
         secure=auth_service.COOKIE_SECURE,
         samesite="strict",
     )
-    # Faz 3 will redirect first-time users to /onboarding instead once a
-    # SQLite profile table exists to check against.
-    return {"redirect": "/"}
+    # A brand-new user (no profile row yet) is redirected straight to the
+    # full /onboarding page by GET / itself (see main.py). An existing user
+    # lands on the main workspace, but frontend/static/js/modals.js watches
+    # for this ?login=1 marker to pop the settings modal open once right
+    # after login too, then strips it from the URL so a later F5 doesn't
+    # reopen it.
+    return {"redirect": "/?login=1"}
 
 
 @router.post("/auth/logout")

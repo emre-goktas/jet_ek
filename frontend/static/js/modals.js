@@ -55,6 +55,18 @@
       }
     });
 
+    // POST /auth/google (auth.py) redirects here with ?login=1 right after a
+    // successful login — pop the settings modal open once so an existing
+    // user sees their profile immediately, without requiring the gear-icon
+    // click. Stripped from the URL right away so a later F5/reload on the
+    // same session doesn't reopen it every time.
+    document.addEventListener('DOMContentLoaded', () => {
+      if (new URLSearchParams(window.location.search).get('login') === '1') {
+        openSettingsModal();
+        history.replaceState(null, '', window.location.pathname);
+      }
+    });
+
     // ─── Gemini API key (BYOK) ───────────────────────────────────────────
     // Kept only in the browser (localStorage) and sent per-request via the
     // X-Gemini-Api-Key header — the backend never writes it to disk/DB.
