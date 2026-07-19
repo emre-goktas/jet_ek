@@ -21,8 +21,24 @@
 </head>
 
 <body class="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center font-sans px-4 py-10">
+  <script>
+    // When loaded inside JETEK's settings modal (frontend/static/js/modals.js
+    // openSettingsModal), this page sits in a fixed-height iframe rather than
+    // owning the whole viewport — drop the "center a card on an empty page"
+    // layout in favor of filling/scrolling the iframe, and drop the card's own
+    // border/shadow since modal-content (index.html) already draws one.
+    if (new URLSearchParams(window.location.search).get('embed') === '1') {
+      document.body.classList.remove('min-h-screen', 'items-center', 'justify-center', 'px-4', 'py-10');
+      document.body.classList.add('items-start', 'justify-start', 'p-5', 'overflow-y-auto');
+      document.documentElement.classList.add('h-full');
+      document.body.classList.add('h-full');
+      document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('onboarding-card')?.classList.remove('border', 'border-gray-800', 'rounded-2xl', 'shadow-2xl', 'max-w-lg');
+      });
+    }
+  </script>
 
-  <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 sm:p-10 flex flex-col gap-6 shadow-2xl w-full max-w-lg">
+  <div id="onboarding-card" class="bg-gray-900 border border-gray-800 rounded-2xl p-8 sm:p-10 flex flex-col gap-6 shadow-2xl w-full max-w-lg">
     <div class="flex items-center gap-2">
       <div class="relative flex items-center justify-center bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg p-1.5 shadow-[0_0_15px_rgba(34,211,238,0.4)]">
         <svg class="w-5 h-5 text-gray-900 translate-x-0.5 -translate-y-0.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
@@ -99,7 +115,7 @@
 
       <div class="flex gap-3 mt-2">
         {% if profile %}
-        <a href="/" class="flex-1 text-center px-4 py-2.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors">İptal</a>
+        <a href="/" id="onboarding-cancel-link" class="flex-1 text-center px-4 py-2.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors">İptal</a>
         {% endif %}
         <button type="submit" class="flex-1 px-4 py-2.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-lg shadow-blue-500/20 transition-colors">
           {{ 'Kaydet' if profile else 'Devam Et' }}
@@ -118,6 +134,18 @@
       ilSelect.required = needsIl;
     }
     onTemplateChange();
+
+    const isEmbedded = new URLSearchParams(window.location.search).get('embed') === '1';
+
+    // Inside the settings modal (index.html), "İptal" should just close the
+    // modal instead of navigating the iframe to '/' (which would load the
+    // whole main app a second time, nested inside itself).
+    if (isEmbedded) {
+      document.getElementById('onboarding-cancel-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.parent.postMessage({ type: 'jetek:settings-cancel' }, window.location.origin);
+      });
+    }
 
     document.getElementById('onboarding-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -150,7 +178,11 @@
           errEl.classList.remove('hidden');
           return;
         }
-        window.location.href = '/';
+        if (isEmbedded) {
+          window.parent.postMessage({ type: 'jetek:profile-saved' }, window.location.origin);
+        } else {
+          window.location.href = '/';
+        }
       } catch (err) {
         errEl.textContent = 'Bağlantı hatası.';
         errEl.classList.remove('hidden');

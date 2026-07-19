@@ -30,6 +30,31 @@
       closeModal('naming-modal');
     }
 
+    // ─── Settings/profile modal ───────────────────────────────────────────
+    // Loads /onboarding in an iframe (its own document, so it can't touch this
+    // page's in-memory batch/upload state — see viewer-state.js) instead of
+    // navigating there in a new tab. ?embed=1 tells onboarding.html to post a
+    // message back here on save/cancel instead of doing a top-level redirect,
+    // which would otherwise just reload the main app *inside* the iframe.
+    function openSettingsModal() {
+      const frame = document.getElementById('settings-modal-frame');
+      if (frame) frame.src = '/onboarding?embed=1';
+      openModal('settings-modal');
+    }
+
+    function closeSettingsModal() {
+      closeModal('settings-modal');
+      const frame = document.getElementById('settings-modal-frame');
+      if (frame) frame.src = 'about:blank'; // drop the form once closed, next open starts fresh
+    }
+
+    window.addEventListener('message', (e) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data && (e.data.type === 'jetek:profile-saved' || e.data.type === 'jetek:settings-cancel')) {
+        closeSettingsModal();
+      }
+    });
+
     // ─── Gemini API key (BYOK) ───────────────────────────────────────────
     // Kept only in the browser (localStorage) and sent per-request via the
     // X-Gemini-Api-Key header — the backend never writes it to disk/DB.

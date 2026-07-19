@@ -203,19 +203,23 @@
          }
       }
 
+      if (typeof showProgressBarIndeterminate === 'function') showProgressBarIndeterminate('İndiriliyor...');
       try {
         const res = await fetch(`/download/${fileId}?ek_no=${index}`);
         if (!res.ok) {
+          if (typeof hideProgressBar === 'function') hideProgressBar();
           showStatus('✗ İndirme başarısız oldu.', 'text-red-400');
           return;
         }
         const blob = await res.blob();
         const filename = li?.querySelector('p.truncate')?.textContent?.trim() || `${fileId}.pdf`;
         triggerBlobDownload(blob, ekPrefixedFilename(index, filename));
+        if (typeof completeProgressBar === 'function') completeProgressBar('✓ İndirme tamamlandı');
         if (typeof logEvent === 'function') logEvent('download_single', {});
         await cleanupDeliveredFiles([fileId]);
       } catch (e) {
         console.error('Download failed:', e);
+        if (typeof hideProgressBar === 'function') hideProgressBar();
         showStatus('✗ İndirme sırasında hata oluştu.', 'text-red-400');
       }
     }

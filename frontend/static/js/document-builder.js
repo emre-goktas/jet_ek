@@ -827,7 +827,7 @@ async function fetchWithRetry(url, options = {}, attempts = 3) {
  * server-side, or its whole chunk failed (same best-effort semantics as
  * batch-split: one bad item/chunk never blocks the rest).
  */
-async function finalizePendingItems(pending) {
+async function finalizePendingItems(pending, onProgress) {
   const entriesByIndex = {};
   const filenamesByIndex = {};
 
@@ -853,10 +853,12 @@ async function finalizePendingItems(pending) {
       });
     } catch (e) {
       if (typeof showStatus === 'function') showStatus('✗ Bekleyen belgeler paketlenemedi.', 'text-red-400');
+      if (onProgress) onProgress(start + chunk.length);
       continue;
     }
     if (!res.ok) {
       if (typeof showStatus === 'function') showStatus('✗ Bekleyen belgeler paketlenemedi.', 'text-red-400');
+      if (onProgress) onProgress(start + chunk.length);
       continue;
     }
 
@@ -867,6 +869,7 @@ async function finalizePendingItems(pending) {
       entriesByIndex[globalIndex] = innerEntries[key];
       filenamesByIndex[globalIndex] = key.slice(String(localIndex).length + 1); // server-sanitized — authoritative over the row's provisional display name
     }
+    if (onProgress) onProgress(start + chunk.length);
   }
 
   return { entriesByIndex, filenamesByIndex };
@@ -883,35 +886,42 @@ async function buildAndDownloadZip(numbered, fileIdFilter) {
   const filesData = gatherOutputFilesData(fileIdFilter);
   if (filesData.length === 0) return;
 
-  if (typeof showStatus === 'function') {
-    showStatus(numbered ? '⏳ Numaralandırılıp paketleniyor...' : '⏳ Paketleniyor...', 'text-gray-400');
-  }
+  const materialized = filesData.filter((f) => !isPendingFileId(f.file_id));
+  const pending = filesData.filter((f) => isPendingFileId(f.file_id));
+  const totalUnits = materialized.length + pending.length;
+  let doneUnits = 0;
+  const progressLabel = numbered ? 'Numaralandırılıp paketleniyor...' : 'Paketleniyor...';
+  if (typeof showProgressBar === 'function') showProgressBar(0, totalUnits, progressLabel);
 
   try {
     const zipEntries = {};
-    const materialized = filesData.filter((f) => !isPendingFileId(f.file_id));
-    const pending = filesData.filter((f) => isPendingFileId(f.file_id));
 
     for (const f of materialized) {
       const res = await fetchWithRetry(`/pdf-source/${encodeURIComponent(f.file_id)}`);
-      if (!res.ok) continue; // matches backend's "skip files that fail to resolve"
-      let pdfBytes = new Uint8Array(await res.arrayBuffer());
-      if (numbered) {
-        try {
-          pdfBytes = await stampEkNumbers(pdfBytes, f.ek_no);
-        } catch (e) {
-          console.error(`Failed to stamp PDF ${f.filename}:`, e);
-          // Fall back to the unstamped bytes already in pdfBytes, same as the
-          // original backend's per-file stamping fallback.
+      if (res.ok) {
+        let pdfBytes = new Uint8Array(await res.arrayBuffer());
+        if (numbered) {
+          try {
+            pdfBytes = await stampEkNumbers(pdfBytes, f.ek_no);
+          } catch (e) {
+            console.error(`Failed to stamp PDF ${f.filename}:`, e);
+            // Fall back to the unstamped bytes already in pdfBytes, same as the
+            // original backend's per-file stamping fallback.
+          }
         }
-      }
-      const zipFilename = ekPrefixedFilename(f.ek_no, f.filename);
-      zipEntries[zipFilename] = pdfBytes;
+        const zipFilename = ekPrefixedFilename(f.ek_no, f.filename);
+        zipEntries[zipFilename] = pdfBytes;
+      } // else: skip files that fail to resolve, matches backend behavior
+      doneUnits++;
+      if (typeof showProgressBar === 'function') showProgressBar(doneUnits, totalUnits, progressLabel);
     }
 
     const finalizedPendingIds = [];
     if (pending.length > 0) {
-      const { entriesByIndex, filenamesByIndex } = await finalizePendingItems(pending);
+      const { entriesByIndex, filenamesByIndex } = await finalizePendingItems(pending, (count) => {
+        if (typeof showProgressBar === 'function') showProgressBar(doneUnits + count, totalUnits, progressLabel);
+      });
+      doneUnits += pending.length;
       for (let i = 0; i < pending.length; i++) {
         let pdfBytes = entriesByIndex[i];
         if (!pdfBytes) continue; // that item's source vanished server-side; leave its pending row untouched, don't mark it delivered
@@ -941,11 +951,12 @@ async function buildAndDownloadZip(numbered, fileIdFilter) {
     const zipped = fflate.zipSync(zipEntries, { level: 6 });
     const blob = new Blob([zipped], { type: 'application/zip' });
     triggerBlobDownload(blob, 'jetek_files.zip');
-    if (typeof showStatus === 'function') showStatus('✓ İndirme hazır.', 'text-green-400');
+    if (typeof completeProgressBar === 'function') completeProgressBar('✓ İndirme hazır');
     logEvent('download_zip', { file_count: filesData.length, numbered, total_pages: filesData.reduce((s, f) => s + (f.page_count || 0), 0) });
     await cleanupDeliveredFiles(materialized.map((f) => f.file_id).concat(finalizedPendingIds));
   } catch (e) {
     console.error('ZIP packaging failed:', e);
+    if (typeof hideProgressBar === 'function') hideProgressBar();
     if (typeof showStatus === 'function') showStatus('✗ Paketleme sırasında hata oluştu.', 'text-red-400');
   }
 }

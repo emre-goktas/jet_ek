@@ -96,7 +96,7 @@
         // (fitz), since there's no browser-side TIFF decoder.
         let uploadFile = file;
         try {
-          showStatus(`⏳ ${file.name} hazırlanıyor (${current}/${total})...`, 'text-gray-400');
+          showProgressBar(current - 1, total, `${file.name} hazırlanıyor (${current}/${total})...`);
           uploadFile = await maybeConvertToPdfBeforeUpload(file);
         } catch (e) {
           console.error('Image->PDF conversion failed:', file.name, e);
@@ -105,7 +105,7 @@
           continue;
         }
 
-        showStatus(`⏳ ${file.name} yükleniyor (${current}/${total})...`, 'text-gray-400');
+        showProgressBar(current - 1, total, `${file.name} yükleniyor (${current}/${total})...`);
         const isOk = await sendFile(uploadFile);
         if (isOk) {
             success++;
@@ -119,10 +119,12 @@
         if (success > 0) msgs.push(`${success} yüklendi`);
         if (skipped > 0) msgs.push(`${skipped} atlandı (desteklenmiyor)`);
         if (failed > 0) msgs.push(`${failed} başarısız`);
+        if (success > 0) completeProgressBar(msgs.join(', ')); else hideProgressBar();
         showStatus(`⚠ ${msgs.join(', ')}.`, 'text-yellow-400');
       } else if (success > 0) {
-        showStatus(`✓ ${success} yükleme tamamlandı.`, 'text-green-400');
+        completeProgressBar(`✓ ${success} yükleme tamamlandı.`);
       } else {
+        hideProgressBar();
         showStatus(`⚠ Yüklenecek geçerli dosya yok.`, 'text-yellow-400');
       }
     }
@@ -205,5 +207,68 @@
       el.textContent = msg;
       el.className = `text-xs text-center mt-2 ${cls}`;
       el.classList.remove('hidden');
+    }
+
+    // Shared progress-bar widget (upload + download flows) — replaces the old
+    // "X yükleniyor / tamamlandı" text logs with a visual bar in the same
+    // footer slot as #upload-status. hideProgressBar's timer is tracked so a
+    // fast second operation (e.g. another download right after one finishes)
+    // doesn't get its bar yanked away by the previous operation's pending hide.
+    let progressHideTimer = null;
+
+    function progressBarEls() {
+      return {
+        wrap: document.getElementById('task-progress'),
+        fill: document.getElementById('task-progress-fill'),
+        pct: document.getElementById('task-progress-pct'),
+        label: document.getElementById('task-progress-label'),
+      };
+    }
+
+    function showProgressBar(current, total, label) {
+      const { wrap, fill, pct, label: labelEl } = progressBarEls();
+      if (!wrap || !fill) return;
+      if (progressHideTimer) { clearTimeout(progressHideTimer); progressHideTimer = null; }
+      const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+      wrap.classList.remove('hidden');
+      fill.className = 'bg-blue-500 h-1.5 rounded-full transition-all duration-300 ease-out';
+      fill.style.width = `${percent}%`;
+      if (pct) pct.textContent = `${percent}%`;
+      if (labelEl) labelEl.textContent = label || '';
+    }
+
+    // Indeterminate variant for single-request operations with no
+    // measurable step count (e.g. a lone file download) — same visual
+    // language as the per-row "İşleniyor..." bar in output-panel.js.
+    function showProgressBarIndeterminate(label) {
+      const { wrap, fill, pct, label: labelEl } = progressBarEls();
+      if (!wrap || !fill) return;
+      if (progressHideTimer) { clearTimeout(progressHideTimer); progressHideTimer = null; }
+      wrap.classList.remove('hidden');
+      fill.className = 'bg-blue-500 h-1.5 rounded-full w-2/3 animate-pulse';
+      fill.style.width = '';
+      if (pct) pct.textContent = '';
+      if (labelEl) labelEl.textContent = label || '';
+    }
+
+    function completeProgressBar(label) {
+      const { wrap, fill, pct, label: labelEl } = progressBarEls();
+      if (!wrap || !fill) return;
+      fill.className = 'bg-green-500 h-1.5 rounded-full transition-all duration-300 ease-out';
+      fill.style.width = '100%';
+      if (pct) pct.textContent = '100%';
+      if (labelEl) labelEl.textContent = label || '';
+      if (progressHideTimer) clearTimeout(progressHideTimer);
+      progressHideTimer = setTimeout(hideProgressBar, 1400);
+    }
+
+    function hideProgressBar() {
+      progressHideTimer = null;
+      const { wrap, fill, pct, label: labelEl } = progressBarEls();
+      if (!wrap) return;
+      wrap.classList.add('hidden');
+      if (fill) { fill.style.width = '0%'; fill.className = 'bg-blue-500 h-1.5 rounded-full transition-all duration-300 ease-out'; }
+      if (pct) pct.textContent = '';
+      if (labelEl) labelEl.textContent = '';
     }
 

@@ -99,7 +99,7 @@
             </svg>
             <div class="flex-1 min-w-0">
               <p class="text-xs font-medium text-gray-200 truncate" title="${safeFilename}">${safeFilename}</p>
-              <p class="text-xs text-amber-500 mt-0.5">${pageCount} sayfa · Bekliyor</p>
+              <p class="text-xs text-gray-500 mt-0.5">${pageCount} sayfa</p>
             </div>
           </div>
           <div class="flex items-center gap-2 mt-2">
