@@ -68,6 +68,25 @@ def _init_db():
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_rename_logs_email ON ai_rename_logs(user_email)")
+        # Client-reported performance/bottleneck metrics (upload, ZIP packaging,
+        # single-file download) — a dedicated table with a fixed shape, same
+        # rationale as ai_rename_logs above: plain SELECTs/aggregates instead
+        # of digging through usage_events' free-form JSON metadata.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS performance_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                page_count INTEGER,
+                batch_count INTEGER,
+                file_size_bytes INTEGER,
+                duration_ms INTEGER,
+                success INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_performance_logs_email ON performance_logs(user_email)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_performance_logs_operation ON performance_logs(operation)")
 
 
 _init_db()
@@ -171,3 +190,101 @@ def log_gemini_rename_safe(*args, **kwargs) -> None:
     except Exception:
         import logging
         logging.getLogger(__name__).warning("Failed to log Gemini rename event", exc_info=True)
+
+
+def log_performance(
+    user_email: str,
+    operation: str,
+    page_count: int | None = None,
+    batch_count: int | None = None,
+    file_size_bytes: int | None = None,
+    duration_ms: int | None = None,
+    success: bool = True,
+) -> None:
+    """One row per client-measured operation (upload / download_zip /
+    download_single) — see frontend/static/js/document-builder.js's
+    logPerformance(). Client-reported like usage_events, so treat the numbers
+    as indicative (subject to the reporting browser's own clock/network),
+    not an audited server-side measurement."""
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO performance_logs
+                (user_email, operation, page_count, batch_count, file_size_bytes, duration_ms, success, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_email, operation, page_count, batch_count, file_size_bytes, duration_ms, 1 if success else 0, _now()),
+        )
+
+
+def log_performance_safe(*args, **kwargs) -> None:
+    try:
+        log_performance(*args, **kwargs)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("Failed to log performance event", exc_info=True)
+
+
+# ─── Admin metrics: read-only query helpers for backend/routers/admin.py ────
+
+def list_usage_events(limit: int = 200) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM usage_events ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def list_ai_rename_logs(limit: int = 200) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM ai_rename_logs ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def list_performance_logs(limit: int = 200) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM performance_logs ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def performance_summary() -> list[dict]:
+    """One row per operation: count, success rate, and average/max duration —
+    the "which action is slow / where's the bottleneck" view, computed in SQL
+    rather than pulled client-side so it stays correct regardless of the
+    admin page's row limit."""
+    with _connect() as conn:
+        rows = conn.execute("""
+            SELECT
+                operation,
+                COUNT(*) AS count,
+                SUM(success) AS success_count,
+                AVG(duration_ms) AS avg_duration_ms,
+                MAX(duration_ms) AS max_duration_ms,
+                AVG(page_count) AS avg_page_count,
+                AVG(file_size_bytes) AS avg_file_size_bytes
+            FROM performance_logs
+            GROUP BY operation
+            ORDER BY count DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+
+ALL_TABLES = {
+    "usage_events": "SELECT * FROM usage_events ORDER BY id DESC",
+    "ai_rename_logs": "SELECT * FROM ai_rename_logs ORDER BY id DESC",
+    "performance_logs": "SELECT * FROM performance_logs ORDER BY id DESC",
+}
+
+
+def export_table_rows(table: str) -> list[dict]:
+    """table must be a key of ALL_TABLES — callers (admin.py) validate against
+    that allowlist before calling this, so the query string here is never
+    built from unvalidated user input."""
+    query = ALL_TABLES[table]
+    with _connect() as conn:
+        rows = conn.execute(query).fetchall()
+        return [dict(r) for r in rows]

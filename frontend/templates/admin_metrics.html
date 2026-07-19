@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JETEK — Metrikler</title>
+  <link rel="icon" type="image/jpeg" href="/static/icon.jpg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-950 text-gray-100 font-sans px-4 sm:px-8 py-8">
+
+  <div class="max-w-6xl mx-auto flex flex-col gap-8">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <h1 class="text-xl font-bold text-gray-100">JETEK — Metrikler</h1>
+      <div class="flex gap-2 text-xs">
+        <a href="/admin/metrics/export/performance_logs.csv" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold">performance_logs.csv</a>
+        <a href="/admin/metrics/export/usage_events.csv" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700">usage_events.csv</a>
+        <a href="/admin/metrics/export/ai_rename_logs.csv" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700">ai_rename_logs.csv</a>
+      </div>
+    </div>
+
+    <!-- Performans özeti: işlem başına sayı/başarı/süre/boyut -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Performans Özeti (işlem başına)</h2>
+      <div class="overflow-x-auto rounded-lg border border-gray-800">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-gray-900 text-gray-500">
+            <tr>
+              <th class="px-3 py-2">İşlem</th>
+              <th class="px-3 py-2">Adet</th>
+              <th class="px-3 py-2">Başarı</th>
+              <th class="px-3 py-2">Ort. Süre</th>
+              <th class="px-3 py-2">Maks. Süre</th>
+              <th class="px-3 py-2">Ort. Sayfa</th>
+              <th class="px-3 py-2">Ort. Boyut</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800">
+            {% for row in summary %}
+            <tr class="hover:bg-gray-900/50">
+              <td class="px-3 py-2 font-medium text-gray-200">{{ row.operation }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.count }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.success_count }}/{{ row.count }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ '%.0f'|format(row.avg_duration_ms) if row.avg_duration_ms is not none else '—' }} ms</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.max_duration_ms if row.max_duration_ms is not none else '—' }} ms</td>
+              <td class="px-3 py-2 text-gray-400">{{ '%.1f'|format(row.avg_page_count) if row.avg_page_count is not none else '—' }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ '%.0f'|format(row.avg_file_size_bytes / 1024) if row.avg_file_size_bytes is not none else '—' }} KB</td>
+            </tr>
+            {% else %}
+            <tr><td class="px-3 py-3 text-gray-600" colspan="7">Henüz veri yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Ham performans logları -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Performans Logları (son 200)</h2>
+      <div class="overflow-x-auto rounded-lg border border-gray-800 max-h-96 overflow-y-auto">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-gray-900 text-gray-500 sticky top-0">
+            <tr>
+              <th class="px-3 py-2">Tarih</th>
+              <th class="px-3 py-2">Kullanıcı</th>
+              <th class="px-3 py-2">İşlem</th>
+              <th class="px-3 py-2">Sayfa</th>
+              <th class="px-3 py-2">Batch</th>
+              <th class="px-3 py-2">Boyut</th>
+              <th class="px-3 py-2">Süre</th>
+              <th class="px-3 py-2">Başarı</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800">
+            {% for row in performance_logs %}
+            <tr class="hover:bg-gray-900/50">
+              <td class="px-3 py-2 text-gray-500 whitespace-nowrap">{{ row.created_at }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.user_email }}</td>
+              <td class="px-3 py-2 text-gray-200">{{ row.operation }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.page_count if row.page_count is not none else '—' }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.batch_count if row.batch_count is not none else '—' }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ (row.file_size_bytes / 1024)|round(0) if row.file_size_bytes is not none else '—' }} KB</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.duration_ms if row.duration_ms is not none else '—' }} ms</td>
+              <td class="px-3 py-2">{{ '✓' if row.success else '✗' }}</td>
+            </tr>
+            {% else %}
+            <tr><td class="px-3 py-3 text-gray-600" colspan="8">Henüz veri yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Genel kullanım olayları -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Kullanım Olayları (son 200)</h2>
+      <div class="overflow-x-auto rounded-lg border border-gray-800 max-h-96 overflow-y-auto">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-gray-900 text-gray-500 sticky top-0">
+            <tr>
+              <th class="px-3 py-2">Tarih</th>
+              <th class="px-3 py-2">Kullanıcı</th>
+              <th class="px-3 py-2">Olay</th>
+              <th class="px-3 py-2">Detay</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800">
+            {% for row in usage_events %}
+            <tr class="hover:bg-gray-900/50">
+              <td class="px-3 py-2 text-gray-500 whitespace-nowrap">{{ row.created_at }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.user_email }}</td>
+              <td class="px-3 py-2 text-gray-200">{{ row.event_type }}</td>
+              <td class="px-3 py-2 text-gray-500 truncate max-w-xs">{{ row.metadata }}</td>
+            </tr>
+            {% else %}
+            <tr><td class="px-3 py-3 text-gray-600" colspan="4">Henüz veri yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- AI adlandırma logları -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">AI Adlandırma Logları (son 200)</h2>
+      <div class="overflow-x-auto rounded-lg border border-gray-800 max-h-96 overflow-y-auto">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-gray-900 text-gray-500 sticky top-0">
+            <tr>
+              <th class="px-3 py-2">Tarih</th>
+              <th class="px-3 py-2">Kullanıcı</th>
+              <th class="px-3 py-2">Eski Ad</th>
+              <th class="px-3 py-2">Yeni Ad</th>
+              <th class="px-3 py-2">Süre</th>
+              <th class="px-3 py-2">Batch</th>
+              <th class="px-3 py-2">Başarı</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800">
+            {% for row in ai_rename_logs %}
+            <tr class="hover:bg-gray-900/50">
+              <td class="px-3 py-2 text-gray-500 whitespace-nowrap">{{ row.created_at }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.user_email }}</td>
+              <td class="px-3 py-2 text-gray-500 truncate max-w-[10rem]">{{ row.original_name }}</td>
+              <td class="px-3 py-2 text-gray-200 truncate max-w-[10rem]">{{ row.new_name }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.duration_ms if row.duration_ms is not none else '—' }} ms</td>
+              <td class="px-3 py-2 text-gray-400">{{ row.batch_size }}</td>
+              <td class="px-3 py-2">{{ '✓' if row.success else '✗' }}</td>
+            </tr>
+            {% else %}
+            <tr><td class="px-3 py-3 text-gray-600" colspan="7">Henüz veri yok.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+
+</html>

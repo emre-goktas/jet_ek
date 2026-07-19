@@ -32,6 +32,26 @@ function logEvent(eventType, metadata) {
   }).catch((e) => console.warn('logEvent failed (non-fatal):', eventType, e));
 }
 
+/** Same fire-and-forget contract as logEvent, but for the performance/
+ * bottleneck table (backend/services/db_service.py's performance_logs) —
+ * page/batch counts, byte size and wall-clock duration for the heavy client-
+ * side operations (upload, ZIP packaging, single download). Feeds GET
+ * /admin/metrics. */
+function logPerformance(operation, { pageCount, batchCount, fileSizeBytes, durationMs, success = true } = {}) {
+  fetch('/api/perf-log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      operation,
+      page_count: pageCount ?? null,
+      batch_count: batchCount ?? null,
+      file_size_bytes: fileSizeBytes ?? null,
+      duration_ms: durationMs != null ? Math.round(durationMs) : null,
+      success,
+    }),
+  }).catch((e) => console.warn('logPerformance failed (non-fatal):', operation, e));
+}
+
 // ─── Magic-byte detection (mirrors backend/services/preprocessor.py) ───────
 
 function detectFileType(bytes) {
@@ -886,6 +906,9 @@ async function buildAndDownloadZip(numbered, fileIdFilter) {
   const filesData = gatherOutputFilesData(fileIdFilter);
   if (filesData.length === 0) return;
 
+  const perfStart = performance.now();
+  const totalPageCount = filesData.reduce((s, f) => s + (f.page_count || 0), 0);
+
   const materialized = filesData.filter((f) => !isPendingFileId(f.file_id));
   const pending = filesData.filter((f) => isPendingFileId(f.file_id));
   const totalUnits = materialized.length + pending.length;
@@ -952,11 +975,24 @@ async function buildAndDownloadZip(numbered, fileIdFilter) {
     const blob = new Blob([zipped], { type: 'application/zip' });
     triggerBlobDownload(blob, 'jetek_files.zip');
     if (typeof completeProgressBar === 'function') completeProgressBar('✓ İndirme hazır');
-    logEvent('download_zip', { file_count: filesData.length, numbered, total_pages: filesData.reduce((s, f) => s + (f.page_count || 0), 0) });
+    logEvent('download_zip', { file_count: filesData.length, numbered, total_pages: totalPageCount });
+    logPerformance('download_zip', {
+      pageCount: totalPageCount,
+      batchCount: filesData.length,
+      fileSizeBytes: zipped.length,
+      durationMs: performance.now() - perfStart,
+      success: true,
+    });
     await cleanupDeliveredFiles(materialized.map((f) => f.file_id).concat(finalizedPendingIds));
   } catch (e) {
     console.error('ZIP packaging failed:', e);
     if (typeof hideProgressBar === 'function') hideProgressBar();
     if (typeof showStatus === 'function') showStatus('✗ Paketleme sırasında hata oluştu.', 'text-red-400');
+    logPerformance('download_zip', {
+      pageCount: totalPageCount,
+      batchCount: filesData.length,
+      durationMs: performance.now() - perfStart,
+      success: false,
+    });
   }
 }

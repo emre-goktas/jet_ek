@@ -98,3 +98,22 @@ def get_current_user_optional(request: Request) -> dict | None:
     (/ and /login) that redirect themselves rather than returning a bare 401."""
     token = request.cookies.get(SESSION_COOKIE_NAME)
     return read_session_token(token) if token else None
+
+
+def _admin_emails() -> set[str]:
+    """Comma-separated allowlist (ADMIN_EMAILS in .env) — this app has no
+    per-user role column, just this one env-configured set for the
+    /admin/metrics dashboard (backend/routers/admin.py). Re-read on every
+    call (not cached) so editing .env + restarting the container is enough,
+    no code change needed to add/remove an admin."""
+    raw = os.environ.get("ADMIN_EMAILS", "")
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def require_admin(request: Request) -> dict:
+    """Strict dependency for /admin/*: 401s if not logged in at all, 403s if
+    logged in but not in ADMIN_EMAILS."""
+    user = get_current_user(request)
+    if user["email"].lower() not in _admin_emails():
+        raise HTTPException(status_code=403, detail="Bu sayfaya erişim yetkiniz yok.")
+    return user

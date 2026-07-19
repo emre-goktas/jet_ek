@@ -154,26 +154,28 @@
     async function sendFile(file) {
       const form = new FormData();
       form.append('file', file);
+      const perfStart = performance.now();
 
       try {
         const res = await fetch('/upload', { method: 'POST', body: form });
         if (!res.ok) {
           const err = await res.json();
           showStatus('✗ Hata: ' + err.detail, 'text-red-400');
+          if (typeof logPerformance === 'function') logPerformance('upload', { batchCount: 1, fileSizeBytes: file.size, durationMs: performance.now() - perfStart, success: false });
           return false;
         }
 
         const html = await res.text();
         const viewer = document.getElementById('viewer');
-        
+
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html.trim();
+        const pageCount = tempDiv.querySelectorAll('.page-card').length || null;
+
         let inner = document.getElementById('viewer-inner');
         if (!inner) {
           viewer.innerHTML = html;
         } else {
-          // Robustly append elements
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = html.trim();
-          
           // find the viewer-inner or assume tempDiv's first child
           const newInner = tempDiv.querySelector('#viewer-inner') || tempDiv.firstElementChild;
           if (newInner) {
@@ -194,9 +196,11 @@
         initSortable();
         observeAllPageCanvases(viewer);
         if (typeof logEvent === 'function') logEvent('upload', { filename: file.name });
+        if (typeof logPerformance === 'function') logPerformance('upload', { pageCount, batchCount: 1, fileSizeBytes: file.size, durationMs: performance.now() - perfStart, success: true });
         return true;
       } catch (err) {
         showStatus('✗ Bağlantı hatası.', 'text-red-400');
+        if (typeof logPerformance === 'function') logPerformance('upload', { batchCount: 1, fileSizeBytes: file.size, durationMs: performance.now() - perfStart, success: false });
         return false;
       }
     }

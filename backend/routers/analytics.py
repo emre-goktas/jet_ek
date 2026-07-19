@@ -28,3 +28,35 @@ async def log_event(request: Request):
     if event_type:
         db_service.log_event_safe(user["email"], event_type, metadata)
     return {"status": "ok"}
+
+
+def _int_or_none(v) -> int | None:
+    try:
+        return int(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+@router.post("/api/perf-log")
+@limiter.limit("120/minute")
+async def log_performance(request: Request):
+    """Body: {operation, page_count?, batch_count?, file_size_bytes?,
+    duration_ms?, success?}. Same fire-and-forget contract as /api/events —
+    see frontend/static/js/document-builder.js's logPerformance()."""
+    user = auth_service.get_current_user(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    operation = str(body.get("operation", "")).strip()[:100]
+    if operation:
+        db_service.log_performance_safe(
+            user["email"],
+            operation,
+            page_count=_int_or_none(body.get("page_count")),
+            batch_count=_int_or_none(body.get("batch_count")),
+            file_size_bytes=_int_or_none(body.get("file_size_bytes")),
+            duration_ms=_int_or_none(body.get("duration_ms")),
+            success=bool(body.get("success", True)),
+        )
+    return {"status": "ok"}

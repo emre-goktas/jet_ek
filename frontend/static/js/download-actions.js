@@ -203,12 +203,16 @@
          }
       }
 
+      const perfStart = performance.now();
+      const pageCount = parseInt(li?.querySelector('.rename-btn')?.dataset.pageCount, 10) || null;
+
       if (typeof showProgressBarIndeterminate === 'function') showProgressBarIndeterminate('İndiriliyor...');
       try {
         const res = await fetch(`/download/${fileId}?ek_no=${index}`);
         if (!res.ok) {
           if (typeof hideProgressBar === 'function') hideProgressBar();
           showStatus('✗ İndirme başarısız oldu.', 'text-red-400');
+          if (typeof logPerformance === 'function') logPerformance('download_single', { pageCount, batchCount: 1, durationMs: performance.now() - perfStart, success: false });
           return;
         }
         const blob = await res.blob();
@@ -216,11 +220,13 @@
         triggerBlobDownload(blob, ekPrefixedFilename(index, filename));
         if (typeof completeProgressBar === 'function') completeProgressBar('✓ İndirme tamamlandı');
         if (typeof logEvent === 'function') logEvent('download_single', {});
+        if (typeof logPerformance === 'function') logPerformance('download_single', { pageCount, batchCount: 1, fileSizeBytes: blob.size, durationMs: performance.now() - perfStart, success: true });
         await cleanupDeliveredFiles([fileId]);
       } catch (e) {
         console.error('Download failed:', e);
         if (typeof hideProgressBar === 'function') hideProgressBar();
         showStatus('✗ İndirme sırasında hata oluştu.', 'text-red-400');
+        if (typeof logPerformance === 'function') logPerformance('download_single', { pageCount, batchCount: 1, durationMs: performance.now() - perfStart, success: false });
       }
     }
 

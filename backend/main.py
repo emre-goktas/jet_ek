@@ -20,7 +20,7 @@ load_dotenv()  # explicit here (not just relying on ai_service's import-time sid
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from backend.routers import upload, pages, extract, download, templates as templates_router, ai, auth, profile, analytics
+from backend.routers import upload, pages, extract, download, templates as templates_router, ai, auth, profile, analytics, admin
 from backend.services.pdf_service import STORAGE_DIR, forget_cached_path, is_file_locked, secure_delete
 from backend.services import auth_service, db_service
 from backend.templating import templates
@@ -156,6 +156,7 @@ _auth_dependency = [Depends(auth_service.get_current_user)]
 app.include_router(auth.router)
 app.include_router(profile.router)  # mixed: /onboarding redirects itself, /api/* enforce auth internally
 app.include_router(analytics.router)  # enforces auth internally (see analytics.py)
+app.include_router(admin.router)  # enforces admin auth internally (see admin.py / auth_service.require_admin)
 app.include_router(upload.router, dependencies=_auth_dependency)
 app.include_router(pages.router, dependencies=_auth_dependency)
 app.include_router(extract.router, dependencies=_auth_dependency)
