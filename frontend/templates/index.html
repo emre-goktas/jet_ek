@@ -20,7 +20,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="/static/css/app.css?v=7" />
+  <link rel="stylesheet" href="/static/css/app.css?v={{ asset_v }}" />
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
   <!-- SortableJS script'ini ekle -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
@@ -40,7 +40,7 @@
        düzenlemek) tarayıcıda. Salt MIT lisanslı, bağımlılıksız — resmi evrak işleyen bu proje
        için JSZip'in MIT/GPLv3 çift lisansından kaçınmak amacıyla tercih edildi. -->
   <script src="https://unpkg.com/fflate@0.8.2/umd/index.js" defer></script>
-  <script src="/static/js/document-builder.js" defer></script>
+  <script src="/static/js/document-builder.js?v={{ asset_v }}" defer></script>
   <style>
     @keyframes domino-jump {
       0% { transform: translateY(0); border-color: #1f2937; }
@@ -490,17 +490,17 @@
     <button type="button" onclick="submitRuleSplit()">Böl</button>
   </div>
 
-  <script src="/static/js/viewer-state.js" defer></script>
-  <script src="/static/js/viewer-render.js" defer></script>
-  <script src="/static/js/upload-handlers.js" defer></script>
-  <script src="/static/js/page-selection.js" defer></script>
-  <script src="/static/js/modals.js" defer></script>
-  <script src="/static/js/rename-modal.js" defer></script>
-  <script src="/static/js/output-panel.js" defer></script>
-  <script src="/static/js/download-actions.js" defer></script>
-  <script src="/static/js/preview-zoom.js" defer></script>
-  <script src="/static/js/batch-mode.js" defer></script>
-  <script src="/static/js/split-mode.js" defer></script>
+  <script src="/static/js/viewer-state.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/viewer-render.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/upload-handlers.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/page-selection.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/modals.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/rename-modal.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/output-panel.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/download-actions.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/preview-zoom.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/batch-mode.js?v={{ asset_v }}" defer></script>
+  <script src="/static/js/split-mode.js?v={{ asset_v }}" defer></script>
 </body>
 
 </html>
